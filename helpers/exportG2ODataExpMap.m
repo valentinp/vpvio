@@ -101,8 +101,8 @@ noObsLandmarkIds = setdiff(landmarks.id, uniques);
 badLandmarkIds = union(singleObsLandmarkIds, noObsLandmarkIds);
 
 
-figure
-hist(pix_error_all)
+% figure
+% hist(pix_error_all)
 
 
 

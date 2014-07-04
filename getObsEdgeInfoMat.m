@@ -8,9 +8,9 @@ function [infoMat] = getObsEdgeInfoMat(T_wcam, pixelMeasurement)
 %  end
 
 if pixelMeasurement(2) > 320
-    infoMat = (3)^-2*eye(2);
+    infoMat = (5)^-2*eye(2);
 else
-    infoMat = (0.1)^-2*eye(2);
+    infoMat = (0.01)^-2*eye(2);
 end
 
 end

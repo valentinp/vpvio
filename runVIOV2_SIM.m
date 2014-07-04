@@ -11,7 +11,7 @@ addpath('simulation');
 addpath('/home/valentin/Dropbox/Research/Ubuntu/opengv/matlab');
 
 %% Random number seed
-rng(12);
+%rng(12341312);
 
 
 
@@ -28,10 +28,10 @@ disp('Generating trajectory...');
 simSetup.imuRate = 100; % Hz
 simSetup.cameraRate = 20; % Hz
 simSetup.cameraResolution = [640, 480]; %pixels
-simSetup.simTime =  60;    % seconds
+simSetup.simTime =  90;    % seconds
 
 simSetup.gyroNoiseStd = 0.0002; 
-simSetup.accelNoiseStd = 0.005;
+simSetup.accelNoiseStd = 0.002;
 simSetup.pixelNoiseStd = 1; %pixels
 
 
@@ -78,8 +78,16 @@ pipelineOptions.inlierThreshold = 0.1^2;
 pipelineOptions.inlierMinDisparity = 3;
 pipelineOptions.inlierMaxForwardDistance = 50;
 
+pipelineOptions.runOptimizationEveryNKeyframes = 10000;
+
 pipelineOptions.verbose = false;
 
+% g2o options
+g2oOptions.maxPixError = 50;
+g2oOptions.fixLandmarks = false;
+g2oOptions.fixPoses = false;
+g2oOptions.motionEdgeInfoMat = diag([1/simSetup.gyroNoiseStd^2 1/simSetup.gyroNoiseStd^2 1/simSetup.gyroNoiseStd^2 1/simSetup.accelNoiseStd^2 1/simSetup.accelNoiseStd^2 1/simSetup.accelNoiseStd^2]);
+g2oOptions.obsEdgeInfoMat = 1*eye(2);
 
 
 xInit.p = imuData.initialPosition;
@@ -98,7 +106,7 @@ noiseParams.tau = 10^12;
 
  
 %The pipeline
-[T_wc_estimated,T_wimu_estimated, keyFrames] = VIOPipelineV2_SIM(K, T_camimu, imageMeasurements, imuData, pipelineOptions, noiseParams, xInit, g_w);
+[T_wc_estimated,T_wimu_estimated, keyFrames] = VIOPipelineV2_SIM(K, T_camimu, imageMeasurements, imuData, pipelineOptions, noiseParams, xInit, g_w, g2oOptions);
 
 close all
 figure
@@ -171,12 +179,7 @@ visualizeVO([], T_wc_estimated(:,:,keyFrameIds), landmarks.position, '- Non Opti
 
 
 %%
-% g2o options
-g2oOptions.maxPixError = 50;
-g2oOptions.fixLandmarks = false;
-g2oOptions.fixPoses = false;
-g2oOptions.motionEdgeInfoMat = diag([1/simSetup.gyroNoiseStd^2 1/simSetup.gyroNoiseStd^2 1/simSetup.gyroNoiseStd^2 1/simSetup.accelNoiseStd^2 1/simSetup.accelNoiseStd^2 1/simSetup.accelNoiseStd^2]);
-g2oOptions.obsEdgeInfoMat = 1*eye(2);
+
 
 %Use GTSAM?
 %  addpath('/home/valentin/Dropbox/Research/Ubuntu/gtsam_toolbox/');
@@ -184,7 +187,7 @@ g2oOptions.obsEdgeInfoMat = 1*eye(2);
 
 %close all;
 
-Optimize the result
+%Optimize the result
 if exist('keyframes.g2o', 'file') == 2
 delete('keyframes.g2o');
 end
@@ -192,18 +195,13 @@ if exist('opt_keyframes.g2o', 'file') == 2
 delete('opt_keyframes.g2o');
 end
 
-exportG2ODataExpMap(keyFrames,landmarks, K, 'keyframes.g2o',g2oOptions)
+exportG2ODataExpMap(keyFrames,landmarks, K, 'keyframes.g2o',g2oOptions);
 
-%command = '!g2o_bin/g2o -i 1000  -v -robustKernel DCS -solver   lm_dense6_3 -o opt_keyframes.g2o test.g2o';
-%command = '!g2o_bin/g2o -i 25 -v -solver lm_var -solverProperties initialLambda=0.001 -o -printSolverProperties opt_keyframes.g2o test.g2o';
 %-robustKernel Cauchy -robustKernelWidth 1
 
-command2 = '!g2o_bin/g2o -i 30 -v -solver  lm_var -o  opt_keyframes.g2o keyframes.g2o';
-
-%command2 = '!g2o_bin/simple_optimize -i 200 -o  opt_keyframes.g2o keyframes.g2o';
-
+command2 = '!g2o_bin/g2o -i 100 -v -solver  lm_var -o  opt_keyframes.g2o keyframes.g2o';
 eval(command2);
-% [T_wc_list_opt, landmarks_w_opt] = importG2ODataExpMap('opt_keyframes.g2o');
+[T_wc_list_opt, landmarks_w_opt, ~] = importG2ODataExpMap('opt_keyframes.g2o');
 
 
     % Plot the result

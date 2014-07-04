@@ -1,7 +1,8 @@
-function [T_wc_list, landmarks_w] =  importG2ODataExpMap(fileName)
+function [T_wc_list, landmarks_w, landmarks_id] =  importG2ODataExpMap(fileName)
 %IMPORTG2ODATA Imports poses and landmarks from a file output by g2o
 
 landmarks_w = [];
+landmarks_id = [];
 T_wc_list = [];
 
 fid = fopen(fileName, 'r');
@@ -19,6 +20,7 @@ while ischar(tline)
    if strcmp(elementType, 'VERTEX_XYZ')
        linePieces = sscanf(tline, '%*s %d %f %f %f');
        landmark = linePieces(2:4);
+       landmarks_id(end+1) = linePieces(1);
        landmarks_w(:, end+1) = landmark(:);
    elseif strcmp(elementType, 'VERTEX_SE3')
        linePieces = sscanf(tline, '%*s %d %f %f %f %f %f %f %f');

@@ -1,4 +1,4 @@
-function [T_wcam_estimated,T_wimu_estimated, keyFrames] = VIOPipelineV2_SIM(K, T_camimu, imageMeasurements, imuData, pipelineOptions, noiseParams, xInit, g_w)
+function [T_wcam_estimated,T_wimu_estimated, keyFrames] = VIOPipelineV2_SIM(K, T_camimu, imageMeasurements, imuData, pipelineOptions, noiseParams, xInit, g_w, g2oOptions)
 %VIOPIPELINE Run the Visual Inertial Odometry Pipeline
 % K: camera intrinsics
 % T_camimu: transformation from the imu to the camera frame
@@ -329,14 +329,58 @@ for measId = measIdsTimeSorted
                referencePose = {};
                referencePose = keyFrames(keyFrame_i);
 
-               keyFrame_i = keyFrame_i + 1;
                
                
-               %New idea!
-               if mod(keyFrame_i, 20) == 0
-                   
-               end
+               %New idea! Run the optimization every N keyframes
+               if mod(keyFrame_i, pipelineOptions.runOptimizationEveryNKeyframes) == 0
+                   landmarks.id = allLandmarkIds;
+                   landmarks.position = allLandmarkPositions_w;
+                   exportG2ODataExpMap(keyFrames,landmarks, K, 'keyframes.g2o',g2oOptions);
+                    %-robustKernel Cauchy -robustKernelWidth 1
+                    command2 = '!g2o_bin/g2o -i 30 -v -solver  lm_var -o  opt_keyframes.g2o keyframes.g2o';
+                    eval(command2);
+                    [T_wc_list_opt, landmarks_w_opt, landmarks_id] = importG2ODataExpMap('opt_keyframes.g2o');
+                    allLandmarkPositions_w = landmarks_w_opt;
+                    [~, newidx] = ismember(landmarks_id, allLandmarkIds); %New landmarks are a subset of the old ones. Need to only keep relevant features
+                    deletedLandmarkIds = setdiff(allLandmarkIds, landmarks_id);
+                    allLandmarkFeatures = allLandmarkFeatures(newidx ,:);
+                    allLandmarkIds = landmarks_id;
+
+                    
+                    
+                    for kfi = 1:keyFrame_i
+                        keyFrames(kfi).T_wk = T_wc_list_opt(:,:,kfi);
+                        keyFrames(kfi).R_wk = T_wc_list_opt(1:3,1:3,kfi);
+                        keyFrames(kfi).t_kw_w = T_wc_list_opt(1:3,4,kfi);
+                    end
+                    
+                    %Remove observations of removed landmarks
+                    for kfi = 1:keyFrame_i
+                        for l_id = 1:length(keyFrames(kfi).landmarkIds)
+                           landmarkId = keyFrames(kfi).landmarkIds(l_id);
+                           if ismember(landmarkId, deletedLandmarkIds)
+                                keyFrames(kfi).landmarkIds(l_id) = NaN;
+                                keyFrames(kfi).pixelMeasurements(:,l_id) = [NaN NaN]';
+                                keyFrames(kfi).refPosePixels(:,l_id) = [NaN NaN]';
+                                keyFrames(kfi).pointCloud(:,l_id) = [NaN NaN NaN]';
+                                keyFrames(kfi).pointCloudSurfFeatures(l_id, :) = NaN;
+                                keyFrames(kfi).pointCloudBearingVectors(:,l_id) = [NaN NaN NaN]';
+                                landmarks.position(:, landmarks.id == landmarkId) = [NaN NaN NaN]';
+                                landmarks.id(landmarks.id == landmarkId) = NaN;
+                           end
+                        end
+                         keyFrames(kfi).pixelMeasurements(:, isnan(keyFrames(kfi).pixelMeasurements(1,:))) = [];
+                         keyFrames(kfi).refPosePixels(:, isnan(keyFrames(kfi).refPosePixels(1,:))) = [];
+                         keyFrames(kfi).pointCloud(:, isnan(keyFrames(kfi).pointCloud(1,:))) = [];
+                         keyFrames(kfi).pointCloudSurfFeatures(isnan(keyFrames(kfi).pointCloudSurfFeatures(:,1)), :) = [];
+                         keyFrames(kfi).pointCloudBearingVectors(:, isnan(keyFrames(kfi).pointCloudBearingVectors(1,:))) = [];
+                         keyFrames(kfi).landmarkIds(isnan(keyFrames(kfi).landmarkIds)) = [];
+                    end %for kfi = 1:keyFrame_i
+                    
+               end %if mod(keyFrame_i, 30) == 0
                
+                keyFrame_i = keyFrame_i + 1;
+
                
 
            end %if meanDisparity
