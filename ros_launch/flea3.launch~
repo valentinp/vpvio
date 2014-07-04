@@ -1,0 +1,25 @@
+<launch>
+<group ns="flea3">
+ <node name="flea3" pkg="camera1394" type="camera1394_node" output="screen">
+	<!--<param name='video_mode' value='format7_mode1'/>
+	<param name='format7_color_coding' value='mono8'/>
+	<param name='roi_width' value='640'/>
+	<param name='roi_height' value='512'/>
+	<param name="frame_rate" value="30" />
+	<param name='format7_packet_size' value='2424'/>
+	<param name='binning_x' value='2'/>
+	<param name='binning_y' value='2'/>
+	<param name='bayer_pattern' value='' />-->
+<param name='video_mode' value='1280x960_mono8'/>
+<param name="frame_rate" value="15" />
+
+ </node>
+</group>
+
+ <!-- mono rectification -->
+<group ns="flea3/camera">
+ <node name="flea3_image_proc" pkg="image_proc" type="image_proc" output="screen" />
+</group>
+
+
+</launch>

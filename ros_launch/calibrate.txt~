@@ -1,0 +1,1 @@
+rosrun camera_calibration cameracalibrator.py --size 14x14 --square 0.0508 image:=/camera/image_raw camera:=/camera --no-service-check

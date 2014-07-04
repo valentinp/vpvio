@@ -1,0 +1,4 @@
+<launch>
+ <node name="nexus5repub" pkg="image_transport" type="republish" args='compressed in:=/camera/image/compressed raw out:=/camera/image_raw' output="screen">
+ </node>
+</launch>

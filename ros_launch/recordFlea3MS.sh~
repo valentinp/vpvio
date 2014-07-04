@@ -1,0 +1,2 @@
+#!/bin/bash
+rosbag record /flea3/camera/image_rect /flea3/camera/image_raw /microstrain/imu/data
