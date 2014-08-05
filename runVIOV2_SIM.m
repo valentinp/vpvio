@@ -8,8 +8,11 @@ addpath('helpers');
 addpath('keyframe_imu');
 addpath('../MATLAB/utils');
 addpath('simulation');
-addpath('/home/valentin/Dropbox/Research/Ubuntu/opengv/matlab');
-
+if ismac
+    addpath('/Users/valentinp/Research/opengv/matlab');
+else
+    addpath('~/Dropbox/Research/Ubuntu/opengv/matlab');
+end
 %% Random number seed
 %rng(12341312);
 
@@ -196,11 +199,16 @@ delete('opt_keyframes.g2o');
 end
 
 exportG2ODataExpMap(keyFrames,landmarks, K, 'keyframes.g2o',g2oOptions);
-
 %-robustKernel Cauchy -robustKernelWidth 1
 
-command2 = '!g2o_bin/g2o -i 100 -v -solver  lm_var -o  opt_keyframes.g2o keyframes.g2o';
-eval(command2);
+%Check if we're using Ubuntu or OSX
+if ismac
+    g2o_exec = '!g2o_bin/g2o_mac';
+else
+    g2o_exec = '!g2o_bin/g2o';
+end
+command = sprintf('%s -i 100 -v -robustKernel Cauchy -robustKernelWidth 1 -solver  lm_var -o  opt_keyframes.g2o keyframes.g2o', g2o_exec);
+eval(command);
 [T_wc_list_opt, landmarks_w_opt, ~] = importG2ODataExpMap('opt_keyframes.g2o');
 
 

@@ -240,11 +240,11 @@ for measId = measIdsTimeSorted
                allPixelMeasurements = pixel_locations(:, matchedRelIndices(:,2));
                 
               
-              %[~, ~, inlierIdx1] = frame2frameRANSAC(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam);
+              [~, ~, inlierIdx1] = frame2frameRANSAC(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam);
               inlierIdx2 = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, allPixelMeasurements, K, pipelineOptions);
               
-              %inlierIdx = intersect(inlierIdx1, inlierIdx2);
-              inlierIdx = inlierIdx2;
+              inlierIdx = intersect(inlierIdx1, inlierIdx2);
+              %inlierIdx = inlierIdx2;
 
               matchedRelFeatures = matchedRelFeatures(inlierIdx, :); 
               matchedReferenceUnitVectors = matchedReferenceUnitVectors(:, inlierIdx);

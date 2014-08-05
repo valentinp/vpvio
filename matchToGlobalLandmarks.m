@@ -11,8 +11,8 @@ function [ matchedToAllIndices ] = matchToGlobalLandmarks( matchedRelFeatures, a
         error_norms = sum(error_vecs.^2, 1);
         
         %Cut off at threshold
-        inlierIdx = error_norms < 10^2;
-
+        inlierIdx = error_norms < 5^2;
+     
         matchedToAllIndices = matchedToAllIndices(inlierIdx,:);
 end
 

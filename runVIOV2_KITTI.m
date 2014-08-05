@@ -9,8 +9,13 @@ addpath('keyframe_imu');
 addpath('../MATLAB/utils');
 addpath('kitti/devkit');
 addpath('kitti');
-addpath('/home/valentin/Dropbox/Research/Ubuntu/opengv/matlab');
-addpath('~/mexopencv/');
+if ismac
+    addpath('/Users/valentinp/Research/opengv/matlab');
+    addpath('/Users/valentinp/Research/mexopencv');
+else
+    addpath('~/Dropbox/Research/Ubuntu/opengv/matlab');
+    addpath('~/mexopencv/');
+end
 
 
 %% Where is the data?
@@ -19,8 +24,8 @@ addpath('~/mexopencv/');
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_29';
 
 %Open street
-dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0036_sync';
-dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
+%dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0036_sync';
+%dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
  
  %Foresty road
 %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0028_sync';
@@ -44,22 +49,26 @@ dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_30';
 
+dataBaseDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26/2011_09_26_drive_0002_sync';
+dataCalibDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26';
+
+
 %% Options
 %Pipeline
-pipelineOptions.featureDetector = 'SURF';
+pipelineOptions.featureDetector = 'FAST';
 pipelineOptions.featureCount = 5000;
 pipelineOptions.descriptorExtractor = 'SURF';
 pipelineOptions.descriptorMatcher = 'BruteForce';
-pipelineOptions.minMatchDistance = 0.5;
+pipelineOptions.minMatchDistance = 0.2;
 
 
-pipelineOptions.initDisparityThreshold = 2;
+pipelineOptions.initDisparityThreshold = 1;
 pipelineOptions.kfDisparityThreshold = 3;
 pipelineOptions.showFeatureTracks = true;
 
 
-pipelineOptions.inlierThreshold = 0.1^2;
-pipelineOptions.inlierMinDisparity = 3;
+pipelineOptions.inlierThreshold = 2^2;
+pipelineOptions.inlierMinDisparity = 2;
 pipelineOptions.inlierMaxForwardDistance = 50;
 
 pipelineOptions.verbose = true;
@@ -68,7 +77,7 @@ pipelineOptions.verbose = true;
 g2oOptions.maxPixError = 25;
 g2oOptions.fixLandmarks = false;
 g2oOptions.fixPoses = false;
-g2oOptions.motionEdgeInfoMat = 10^4*eye(6);
+g2oOptions.motionEdgeInfoMat = 10^4.5*eye(6);
 g2oOptions.obsEdgeInfoMat = 1/2.5^2*eye(2);
 
 
@@ -195,8 +204,17 @@ exportG2ODataExpMap(keyFrames,landmarks, K, 'keyframes.g2o', g2oOptions)
 %command = '!g2o_bin/g2o -i 25 -v -solver lm_var -solverProperties initialLambda=0.001 -o -printSolverProperties opt_keyframes.g2o test.g2o';
 %-robustKernel Cauchy -robustKernelWidth 1
 
-command = '!g2o_bin/g2o -i 100 -v -solver lm_dense6_3  -o  opt_keyframes.g2o keyframes.g2o';
+%Check if we're using Ubuntu or OSX
+if ismac
+    g2o_exec = '!g2o_bin/g2o_mac';
+else
+    g2o_exec = '!g2o_bin/g2o';
+end
+command = sprintf('%s -i 1000 -v -solver  lm_var  -o  opt_keyframes.g2o keyframes.g2o', g2o_exec);
 eval(command);
+
+
+%command = '!g2o_bin/g2o -i 100 -v -solver lm_dense6_3  -o  opt_keyframes.g2o keyframes.g2o';
 
 [T_wc_list_opt, landmarks_w_opt] = importG2ODataExpMap('opt_keyframes.g2o');
 
@@ -230,17 +248,18 @@ view([0 90]);
 legend('Ground Truth', 'IMU Only','VIO', 4);
 
 % Calculate Relative Pose Error
-
 % Take only the poses at the keyframes
 T_wCam_GT_sync = T_wCam_GT(:,:,keyFrameIds);
 T_wc_est_sync = T_wc_estimated(:,:, keyFrameIds);
 
-RPE_opt =  zeros(4,4, size(T_wCam_GT_sync,3));
+dstep = 2;
+
+RPE_opt =  zeros(4,4, size(T_wCam_GT_sync,3) - dstep);
 RPE_imuonly = RPE_opt;
 
-for i = 1:(size(T_wCam_GT_sync,3)-1)
-    RPE_opt(:,:,i) = inv(inv(T_wCam_GT_sync(:,:,i))*T_wCam_GT_sync(:,:,i+1))*inv(T_wc_list_opt(:,:,i))*T_wc_list_opt(:,:,i+1); 
-    RPE_imuonly(:,:,i) = inv(inv(T_wCam_GT_sync(:,:,i))*T_wCam_GT_sync(:,:,i+1))*inv(T_wc_est_sync(:,:,i))*T_wc_est_sync(:,:,i+1);  
+for i = 1:(size(T_wCam_GT_sync,3)-dstep)
+    RPE_opt(:,:,i) = inv(inv(T_wCam_GT_sync(:,:,i))*T_wCam_GT_sync(:,:,i+dstep))*inv(T_wc_list_opt(:,:,i))*T_wc_list_opt(:,:,i+dstep); 
+    RPE_imuonly(:,:,i) = inv(inv(T_wCam_GT_sync(:,:,i))*T_wCam_GT_sync(:,:,i+dstep))*inv(T_wc_est_sync(:,:,i))*T_wc_est_sync(:,:,i+dstep);  
 end
 
 %Calculate the root mean squared error of all the relative pose errors
@@ -260,4 +279,12 @@ title(sprintf('RMSE RPE (Optimized/IMU Only): %.5f / %.5f ', RMSE_RPE_opt, RMSE_
 
 printf('--------- \n End Euclidian Error (Opt/IMU): %.5f / %.5f', norm(p_CAMw_w_GT(:,end) -  p_CAMw_w_estOpt(:, end)) ,norm(p_CAMw_w_GT(:,end) -  p_CAMw_w_est(:, end)));
 
+% Display mean errors
+opt_errors = p_CAMw_w_GT -  p_CAMw_w_estOpt;
+imu_errors = p_CAMw_w_GT -  p_CAMw_w_est;
+
+mean_opt_euc = mean(sqrt(sum(opt_errors.^2, 1)));
+mean_imu_euc = mean(sqrt(sum(imu_errors.^2, 1)));
+
+printf('--------- \n Mean Euclidian Error (Opt/IMU): %.5f / %.5f',mean_opt_euc , mean_imu_euc);
 

@@ -132,7 +132,7 @@ for i = 1:length(keyFrames)
 
     %Print poses
     fprintf(fid, 'VERTEX_SE3:EXPMAP %d %.10f %.10f %.10f %.10f %.10f %.10f %.10f \n',i,t_kw_w(1),t_kw_w(2), t_kw_w(3), q_wk(2), q_wk(3), q_wk(4), q_wk(1)); %The last number here is the baseline which does not apply to our monocular case
-    if i == 2
+    if i == length(keyFrames)
         fprintf(fid, 'FIX 1 \n');
         fprintf(fid, 'FIX 2 \n');
     end

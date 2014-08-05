@@ -226,7 +226,7 @@ for measId = measIdsTimeSorted
                
                 allPixelMeasurements = surfPoints(:,matchedRelIndices(:,2));
                 
-                 inlierIdx = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, allPixelMeasurements, K, pipelineOptions);
+               inlierIdx = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, allPixelMeasurements, K, pipelineOptions);
              
 
                 
@@ -234,7 +234,17 @@ for measId = measIdsTimeSorted
               matchedReferenceUnitVectors = matchedReferenceUnitVectors(:, inlierIdx);
               matchedCurrentUnitVectors = matchedCurrentUnitVectors(:, inlierIdx);
               
-%                 t_opt = opengv('twopt',double([1,2]), double(matchedReferenceUnitVectors(:,5:7)), double(matchedCurrentUnitVectors(:,5:7)), double(R_rcam));
+              
+              
+              
+              %Perform feature learning
+              %========================
+              t_opt = learnFeatures(matchedReferenceUnitVectors, matchedCurrentUnitVectors,[R_rcam p_camr_r], );
+
+              
+              
+              
+                 t_opt = opengv('rel_nonlin_central',double(1:size(matchedReferenceUnitVectors,2)), double(matchedReferenceUnitVectors), double(matchedCurrentUnitVectors), double([R_rcam p_camr_r]));
 % 
 %                normalize(t_opt)
 %                 normalize(p_camr_r)

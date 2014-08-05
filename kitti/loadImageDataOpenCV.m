@@ -10,7 +10,7 @@ function [monoImageData] = loadImageDataOpenCV(framesFolder, imageRange)
     imageNum = length(imageRange);
     
     %Get the width and height
-    testIm = imread([imgDir '/' fileNames(1).name]);
+    testIm = cv.imread([imgDir '/' fileNames(1).name]);
     imHeight = size(testIm, 1);
     imWidth = size(testIm, 2);
     
