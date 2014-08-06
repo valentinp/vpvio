@@ -95,7 +95,7 @@ for ic = 1:numClusters
 end
 
 %Possibly apply PCA?
-%[COEFF,SCORE] = princomp(allPredVectors');
+[COEFF,SCORE] = princomp(allPredVectors');
 
     
 % Step through each image and remove one cluster at a time

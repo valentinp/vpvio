@@ -237,14 +237,11 @@ for measId = measIdsTimeSorted
               
               
               
-              %Perform feature learning
-              %========================
-              t_opt = learnFeatures(matchedReferenceUnitVectors, matchedCurrentUnitVectors,[R_rcam p_camr_r], );
-
+            
               
               
               
-                 t_opt = opengv('rel_nonlin_central',double(1:size(matchedReferenceUnitVectors,2)), double(matchedReferenceUnitVectors), double(matchedCurrentUnitVectors), double([R_rcam p_camr_r]));
+                 %t_opt = opengv('rel_nonlin_central',double(1:size(matchedReferenceUnitVectors,2)), double(matchedReferenceUnitVectors), double(matchedCurrentUnitVectors), double([R_rcam p_camr_r]));
 % 
 %                normalize(t_opt)
 %                 normalize(p_camr_r)

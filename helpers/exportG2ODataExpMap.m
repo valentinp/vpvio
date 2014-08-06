@@ -182,11 +182,11 @@ for i = 1:length(keyFrames)
     end
     
     %Print landmark observations
-        %infoMat = g2oOptions.obsEdgeInfoMat;
+      infoMat = g2oOptions.obsEdgeInfoMat;
 
 
     for j = 1:length(landmarkIds)
-                infoMat = getObsEdgeInfoMat(kf.T_wk, pixelMeasurements(:,j));
+                %infoMat = getObsEdgeInfoMat(kf.T_wk, pixelMeasurements(:,j));
                 landmarkInfoString = [num2str(infoMat(1,1)), ' ', num2str(infoMat(1,2)), ' ', num2str(infoMat(2,2))];
         
             if ~ismember(landmarkIds(j),badLandmarkIds)

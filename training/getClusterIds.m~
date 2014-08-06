@@ -1,0 +1,17 @@
+function clusterIds = getClusterIds(predVectors, clusteringModel)
+%GETCLUSTERIDS Associated points in the prediction space with each cluster
+
+clusterIds = zeros(1, size(predVectors,2));
+
+for c_id = clusteringModel.centroids
+    centroid = clusteringModel.centroids(:, c_id);
+    distances = vecNorms(predVectors - repmat(centroid, [1 size(predVectors,2)])).^2;
+    clusterIds(distances < threshDist) = c_id;
+    
+end
+
+locationsSansCluster = locations;
+locationsSansCluster(:, distances < threshDist) = [];
+
+end
+
