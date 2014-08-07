@@ -95,7 +95,7 @@ printf(['--------- \nDeleted ' num2str(totalDeletions) ' bad observations.\n----
 
 
 %Final cleanup: ensure there are no landmarks that have less than 2
-%observations
+%observations and remove any landmarks that are not in our good clusters
 
 allLandmarkIds = [];
 for i = 1:length(keyFrames)
@@ -191,9 +191,20 @@ for i = 1:length(keyFrames)
     %Print landmark observations
         %infoMat = g2oOptions.obsEdgeInfoMat;
 
-
+    UseClustersNo = find(clusterWeights > 10);
+    
+    
+    
+    
     for j = 1:length(landmarkIds)
-                infoMat = getObsEdgeInfoMat(kf.predVectors(:,j), clusteringModel, clusterWeights);
+                clusterId = getClusterIds(kf.predVectors(:,j), clusteringModel);
+                if ismember(clusterId, UseClustersNo)
+                    infoMat = 10*clusterWeights(clusterId)*eye(2);
+                else
+                    infoMat = 0.1*eye(2);
+                end
+                infoMat = eye(2);
+                %infoMat = getObsEdgeInfoMat(kf.predVectors(:,j), clusteringModel, clusterWeights);
                 landmarkInfoString = [num2str(infoMat(1,1)), ' ', num2str(infoMat(1,2)), ' ', num2str(infoMat(2,2))];
         
             if ~ismember(landmarkIds(j),badLandmarkIds)

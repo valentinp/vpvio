@@ -50,7 +50,7 @@ end
 %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_30';
 
-dataBaseDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26/2011_09_26_drive_0002_sync';
+dataBaseDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26/2011_09_26_drive_0093_sync';
 dataCalibDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26';
 
 
@@ -66,7 +66,6 @@ pipelineOptions.minMatchDistance = 0.2;
 pipelineOptions.initDisparityThreshold = 1;
 pipelineOptions.kfDisparityThreshold = 3;
 pipelineOptions.showFeatureTracks = true;
-
 
 pipelineOptions.inlierThreshold = 2^2;
 pipelineOptions.inlierMinDisparity = 2;
@@ -86,7 +85,7 @@ g2oOptions.obsEdgeInfoMat = 1/2.5^2*eye(2);
 %% Get ground truth and import data
 % frameNum limits the import to first frameNum frames (if this exceeds the
 % number in the dataset, all frames are used)
-frameRange = 1:30;
+frameRange = 1:20;
 
 %Ground Truth
 T_wIMU_GT = getGroundTruth(dataBaseDir);
@@ -106,7 +105,6 @@ T_veloimu = loadCalibrationRigid(fullfile(dataCalibDir,'calib_imu_to_velo.txt'))
 T_camimu = T_camvelo*T_veloimu;
 
 %Add camera ground truth
-
 T_wCam_GT = T_wIMU_GT;
 
 for i = 1:size(T_wIMU_GT, 3)
@@ -157,7 +155,9 @@ clusteringModel.clusterNum = numClusters;
 clusteringModel.centroids = C';
 clusteringModel.threshDists = meanCentroidDists;
 
-
+%% PCA
+[COEFF,SCORE, latent] = princomp(allPredVectors');
+latent
 
 %% VIO pipeline
 %Set parameters
@@ -182,8 +182,6 @@ noiseParams.tau = 10^12;
 
 %Mean the cluster weights
 clusterWeights = median(clusterWeightList, 1);
-
-%%
 
 %% G2O
 % Extract unique landmarks
@@ -244,7 +242,7 @@ if ismac
 else
     g2o_exec = '!g2o_bin/g2o';
 end
-command = sprintf('%s -i 1000 -v -solver  lm_var  -o  opt_keyframes.g2o keyframes.g2o', g2o_exec);
+command = sprintf('%s -i 1000 -v -solver  lm_dense6_3  -o  opt_keyframes.g2o keyframes.g2o', g2o_exec);
 eval(command);
 
 [T_wc_list_opt, landmarks_w_opt] = importG2ODataExpMap('opt_keyframes.g2o');
@@ -283,7 +281,7 @@ legend('Ground Truth', 'IMU Only','VIO', 4);
 T_wCam_GT_sync = T_wCam_GT(:,:,keyFrameIds);
 T_wc_est_sync = T_wc_estimated(:,:, keyFrameIds);
 
-dstep = 2;
+dstep = 1;
 
 RPE_opt =  zeros(4,4, size(T_wCam_GT_sync,3) - dstep);
 RPE_imuonly = RPE_opt;

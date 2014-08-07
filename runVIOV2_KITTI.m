@@ -74,7 +74,7 @@ pipelineOptions.inlierMaxForwardDistance = 50;
 pipelineOptions.verbose = true;
 
 % g2o options
-g2oOptions.maxPixError = 25;
+g2oOptions.maxPixError = 1;
 g2oOptions.fixLandmarks = false;
 g2oOptions.fixPoses = false;
 g2oOptions.motionEdgeInfoMat = 10^4.5*eye(6);

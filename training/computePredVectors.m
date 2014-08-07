@@ -8,6 +8,7 @@ predVectors = zeros(predSpaceDim, size(pixelLocations,2));
 
 %normalize rgb image
 rgb = rgb./255.0;
+imageSize = size(rgb(:,:,1))';
 
 
 for i = 1:size(pixelLocations, 2)
@@ -40,10 +41,10 @@ for i = 1:size(pixelLocations, 2)
         %local mean intensity
         localIntensity = mean2(grayImgSeg);
         
-        predVectors(:,i) = [pixelLoc; localColour; localContrast; localIntensity];
+        predVectors(:,i) = [pixelLoc./imageSize; localColour; localContrast; localIntensity];
         
     else
-        predVectors(:,i) = [pixelLoc; 0;0;0;0;0;0];
+        predVectors(:,i) = [pixelLoc./imageSize; 0;0;0;0;0;0];
     end
     
     %Feature vector
