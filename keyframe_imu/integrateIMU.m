@@ -6,6 +6,14 @@ function [xUpdate] = integrateIMU(xPrev, a, omega, dt, noise_params, g_w)
     %The state is given by:
     %x = [p q v b_g b_a];
     
+    %Set noise to 0
+    noiseParams.sigma_g = 0;
+    noiseParams.sigma_a = 0;
+    noiseParams.sigma_bg = 0;
+    noiseParams.sigma_ba = 0;
+    noiseParams.tau = 10^12;
+
+    
            
    %Calculate xDot
    w = getWhiteNoise(noise_params);

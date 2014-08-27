@@ -49,36 +49,40 @@ end
 %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_30';
 
-dataBaseDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26/2011_09_26_drive_0002_sync';
-dataCalibDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26';
+%dataBaseDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26/2011_09_26_drive_0002_sync';
+%dataCalibDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26';
+
+%Ubuntu
+dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0002_sync';
+dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
 
 %% Options
 %Pipeline
-pipelineOptions.featureDetector = 'FAST';
+pipelineOptions.featureDetector = 'SURF';
 pipelineOptions.featureCount = 5000;
 pipelineOptions.descriptorExtractor = 'SURF';
-pipelineOptions.descriptorMatcher = 'BruteForce';
-pipelineOptions.minMatchDistance = 0.2;
+pipelineOptions.descriptorMatcher = 'FlannBased';
+pipelineOptions.minMatchDistance = 0.4;
 
 
 pipelineOptions.initDisparityThreshold = 1;
-pipelineOptions.kfDisparityThreshold = 3;
+pipelineOptions.kfDisparityThreshold = 5;
 pipelineOptions.showFeatureTracks = true;
 
 
-pipelineOptions.inlierThreshold = 2^2;
+pipelineOptions.inlierThreshold = 1^2;
 pipelineOptions.inlierMinDisparity = 2;
-pipelineOptions.inlierMaxForwardDistance = 50;
+pipelineOptions.inlierMaxForwardDistance = 100;
 
 pipelineOptions.verbose = true;
 
 % g2o options
-g2oOptions.maxPixError = 1;
+g2oOptions.maxPixError = 50;
 g2oOptions.fixLandmarks = false;
 g2oOptions.fixPoses = false;
-g2oOptions.motionEdgeInfoMat = 10^4.5*eye(6);
-g2oOptions.obsEdgeInfoMat = 1/2.5^2*eye(2);
+g2oOptions.motionEdgeInfoMat = 10^4*eye(6);
+g2oOptions.obsEdgeInfoMat = 20*eye(2);
 
 
 
@@ -93,7 +97,7 @@ T_wIMU_GT = getGroundTruth(dataBaseDir);
 T_wIMU_GT = T_wIMU_GT(:,:,frameRange);
 
 %Image data
-monoImageData = loadImageDataOpenCV([dataBaseDir '/image_00'], frameRange);
+monoImageData = loadImageData([dataBaseDir '/image_00'], frameRange);
 
 %IMU data
 imuData = loadImuData(dataBaseDir, frameRange);
@@ -182,9 +186,7 @@ visualizeVO([], T_wc_estimated(:,:,keyFrameIds), landmarks.position, '- Non Opti
 
 %%
 %Use GTSAM?
-% import gtsam.*;
-% addpath('/home/valentin/Dropbox/Research/Ubuntu/gtsam_toolbox/');
-% [T_wc_list_opt, landmarks_w_opt] = processWithGTSAM(keyFrames,landmarks, K);
+%[T_wc_list_opt, landmarks_w_opt] = processWithGTSAM(keyFrames,landmarks, K, g2oOptions);
 
 
 % Optimize the result

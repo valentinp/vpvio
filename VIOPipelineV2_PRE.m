@@ -1,4 +1,4 @@
-function [T_wcam_estimated,T_wimu_estimated, keyFrames, clusterWeights] = VIOPipelineV2_PRE(K, T_camimu, monoImageData, rgbImageData, imuData, pipelineOptions, noiseParams, xInit, g_w, clusteringModel, T_wCam_GT)
+function [T_wcam_estimated,T_wimu_estimated, keyFrames, clusterWeights, allFrames] = VIOPipelineV2_PRE(K, T_camimu, monoImageData, rgbImageData, imuData, pipelineOptions, noiseParams, xInit, g_w, clusteringModel, T_wCam_GT)
 %VIOPIPELINE Run the Visual Inertial Odometry Pipeline
 % K: camera intrinsics
 % T_camimu: transformation from the imu to the camera frame
@@ -64,6 +64,7 @@ imuMeasId = 0;
 
 %Initialize the state
 xPrev = xInit;
+RPrev = 0.01*eye(15);
 
 %Initialize the history
 R_wimu = rotmat_from_quat(xPrev.q);
@@ -73,7 +74,7 @@ T_wimu_estimated = inv([R_imuw -R_imuw*p_imuw_w; 0 0 0 1]);
 T_wcam_estimated = T_wimu_estimated*inv(T_camimu);
 
 iter = 1;
-
+imuDataStruct = {};
 %Keep track of landmarks
 allLandmarkIds = [];
 allLandmarkFeatures = [];
@@ -104,8 +105,9 @@ for measId = measIdsTimeSorted
         try     
             dt = imuData.timestamps(imuMeasId) - imuData.timestamps(imuMeasId - 1);
         catch
-            disp('WARNING: Cannot calculate dt. Assuming IMU recording rate of 10Hz.');
-            dt = 0.1;
+            %disp('WARNING: Cannot calculate dt. Assuming IMU recording rate of 7.5Hz.');
+            %dt = 0.15;
+            dt = imuData.timestamps(imuMeasId+1) - imuData.timestamps(imuMeasId);
         end
         
         %Extract the measurements
@@ -115,8 +117,16 @@ for measId = measIdsTimeSorted
         %Predict the next state
         
         [xPrev] = integrateIMU(xPrev, imuAccel, imuOmega, dt, noiseParams, g_w);
-         
-        R_wimu = rotmat_from_quat(xPrev.q);
+        [Rprev] = propagateCovariance(xPrev, imuAccel, dt, noiseParams, RPrev);
+        
+        imuTemp.v = xPrev.v;
+        imuTemp.a = imuAccel;
+        imuTemp.omega = imuOmega;
+        imuTemp.dt = dt;
+        imuTemp.g_w = g_w;
+        
+        imuDataStruct{end+1} = imuTemp;
+         R_wimu = rotmat_from_quat(xPrev.q);
         R_imuw = R_wimu';
         p_imuw_w = xPrev.p;
          
@@ -137,7 +147,7 @@ for measId = measIdsTimeSorted
             disp(['Processing Camera Measurement. ID: ' num2str(camMeasId)]); 
         end
                 
-        
+
         %Get measurement data
         %camMeasId
         currImage = uint8(monoImageData.rectImages(:,:,camMeasId));
@@ -175,6 +185,7 @@ for measId = measIdsTimeSorted
            referencePose.allSurfFeatures = surfFeatures;
            referencePose.allBearingVectors = points_f;
            referencePose.allSurfPoints = surfPoints;
+           referencePose.AllPixelMeasurements = pixel_locations;
            referencePose.R_wk = T_wcam(1:3,1:3);
            referencePose.T_wk = T_wcam;
            if imuMeasId == 0
@@ -220,7 +231,7 @@ for measId = measIdsTimeSorted
            %=======DO WE NEED A NEW KEYFRAME?=============
            %Calculate disparity between the current frame the last keyFramePose
            %disparityMeasure = calcDisparity(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, K);
-           disparityMeasure = calcDisparity(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, K);
+           disparityMeasure = calcDisparity(referencePose.AllPixelMeasurements(:, matchedRelIndices(:,1)), pixel_locations(:, matchedRelIndices(:,2)));
            disp(['Disparity Measure: ' num2str(disparityMeasure)]);
            
            
@@ -231,7 +242,7 @@ for measId = measIdsTimeSorted
 
                 %disp('Initializing first keyframe');   
                 %disp(['Moved this much: ' ])
-                if keyFrame_i == 3
+                if keyFrame_i == 1
                     initiliazationComplete = true;
                 end
 
@@ -245,11 +256,15 @@ for measId = measIdsTimeSorted
                allPixelMeasurements = pixel_locations(:, matchedRelIndices(:,2));
                 
               
-              [~, ~, inlierIdx1] = frame2frameRANSAC(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam);
-              inlierIdx2 = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, allPixelMeasurements, K, pipelineOptions);
+              %[~, ~, inlierIdx1] = frame2frameRANSAC(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam);
+             
+              %Calculate the predicition vectors
+              predVectors = computePredVectors(allPixelMeasurements, rgbImageData.rectImages(:,:,:, camMeasId));
+              clusterIds = getClusterIds(predVectors, clusteringModel);
+              inlierIdx2 = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, allPixelMeasurements, K, pipelineOptions, clusterIds);
               
-              inlierIdx = intersect(inlierIdx1, inlierIdx2);
-              %inlierIdx = inlierIdx2;
+              %inlierIdx = intersect(inlierIdx1, inlierIdx2);
+              inlierIdx = inlierIdx2;
 
               
               
@@ -289,14 +304,20 @@ for measId = measIdsTimeSorted
                
                %Show feature tracks if requested
                if keyFrame_i > 0 && pipelineOptions.showFeatureTracks
+
                     showMatchedFeatures(referencePose.currImage,currImage, refPixels, pixelMeasurements');
+                    hold on;
+                    clusterIds = getClusterIds(predVectors, clusteringModel);
+                    plot(pixelMeasurements(1, clusterIds == 1), pixelMeasurements(2, clusterIds == 1), 'mo' ,'MarkerSize',10);
+                    plot(pixelMeasurements(1, clusterIds == 2), pixelMeasurements(2, clusterIds == 2), 'co', 'MarkerSize',10);
                     drawnow;
+                    allFrames(keyFrame_i) = getframe;
                     pause(0.01);
                end
                
                %Keep track of landmarks
                %Some random integer to ensure landmark ids do not clash with pose ids in G2O
-               largeInt = 1000;
+               largeInt = 100000;
            
                if size(matchedRelFeatures, 1) > 0 %Ensure there are features!
                    if keyFrame_i == 1
@@ -363,6 +384,14 @@ for measId = measIdsTimeSorted
 
                keyFrames(keyFrame_i).imuMeasId = size(T_wcam_estimated,3);
                keyFrames(keyFrame_i).camMeasId = camMeasId;
+               
+               %Record and reset the covariance
+               keyFrames(keyFrame_i).RPrev = Rprev;
+               keyFrames(keyFrame_i).imuDataStruct = imuDataStruct;
+               imuDataStruct = {};
+
+               %Rprev = zeros(15);
+               
                keyFrames(keyFrame_i).R_wk = R_wcam;
                keyFrames(keyFrame_i).t_kw_w = p_camw_w;
                keyFrames(keyFrame_i).T_wk = T_wcam;
@@ -375,6 +404,8 @@ for measId = measIdsTimeSorted
                keyFrames(keyFrame_i).allSurfPoints = surfPoints;
 
                keyFrames(keyFrame_i).pixelMeasurements = pixelMeasurements;
+               keyFrames(keyFrame_i).AllPixelMeasurements = pixel_locations;
+               
                keyFrames(keyFrame_i).refPosePixels = refPixels';
                
                keyFrames(keyFrame_i).landmarkIds = landmarkIds; %Unique integer associated with a landmark

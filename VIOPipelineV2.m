@@ -20,7 +20,7 @@ function [T_wcam_estimated,T_wimu_estimated, keyFrames] = VIOPipelineV2(K, T_cam
 % Import opencv
 import cv.*;
 opencvDetector = cv.FeatureDetector(pipelineOptions.featureDetector);
-opencvMatcher = DescriptorMatcher(pipelineOptions.descriptorMatcher);
+opencvMatcher = cv.DescriptorMatcher(pipelineOptions.descriptorMatcher);
 opencvExtractor = cv.DescriptorExtractor(pipelineOptions.descriptorExtractor);
 
         
@@ -140,48 +140,47 @@ for measId = measIdsTimeSorted
         
         %Get measurement data
         %camMeasId
-        currImage = uint8(monoImageData.rectImages(:,:,camMeasId));
+        currImage = monoImageData.rectImages(:,:,camMeasId);
         
-
+        %=======Deprecated=======%
+        %OpenCV method
         %Extract features, select N strongest
-        surfPoints = opencvDetector.detect(currImage);
-        [~,sortedKeyPointIds] = sort([surfPoints.response]);
-        surfPoints = surfPoints(sortedKeyPointIds(1:min(pipelineOptions.featureCount,length(surfPoints))));
-
+        %surfPoints = opencvDetector.detect(currImage);
+        %[~,sortedKeyPointIds] = sort([surfPoints.response]);
+        %surfPoints = surfPoints(sortedKeyPointIds(1:min(pipelineOptions.featureCount,length(surfPoints))));
+        %surfFeatures = opencvExtractor.compute(currImage, surfPoints);
+        %pixel_locations = reshape([surfPoints.pt], [2 length(surfPoints)]);
         
-        
-        surfFeatures = opencvExtractor.compute(currImage, surfPoints);
-        pixel_locations = reshape([surfPoints.pt], [2 length(surfPoints)]);
-        
-        
-        
-        %Necessary for FAST points
-        %surfFeatures = surfFeatures.Features;
-        
-
-        %Back project features onto UNIT sphere
-        %pixel_locations = surfPoints.Location(:,:)';
-        points_f = normalize(invK*cart2homo(pixel_locations));
-
         
         %The last IMU state
         T_wimu = T_wimu_estimated(:,:, end);
         T_wcam = T_wcam_estimated(:,:, end);
 
-        
-        %If it's the first image, set the current pose to the initial
-        %keyFramePose
-        if camMeasId == 1
-           referencePose.allSurfFeatures = surfFeatures;
-           referencePose.allBearingVectors = points_f;
-           referencePose.allSurfPoints = surfPoints;
-           referencePose.R_wk = T_wcam(1:3,1:3);
-           referencePose.T_wk = T_wcam;
-           referencePose.currImage = currImage;
-        else
-            %The reference pose is either the last keyFrame or the initial pose
-            %depending on whether we are initialized or not
+             %Extract keyPoints and their features
+        keyPoints = detectFASTFeatures(mat2gray(currImage));
+        [keyPointFeatures, keyPoints] = extractFeatures(mat2gray(currImage), keyPoints);
+        keyPointFeatures = keyPointFeatures.Features;
+        keyPointPixels = keyPoints.Location(:,:)';
+        keyPointUnitVectors = normalize(invK*cart2homo(keyPointPixels));
             
+
+             
+       %If it's the first camera measurements, we're done. Otherwise
+       %continue with pipeline
+        if camMeasId == 1
+        
+             %Save data into the referencePose struct
+       referencePose.allkeyPointFeatures = keyPointFeatures;
+       referencePose.allkeyPointUnitVectors = keyPointUnitVectors;
+       referencePose.allkeyPoints = keyPoints;
+       referencePose.allKeyPointPixels = keyPointPixels;
+       referencePose.R_wk = T_wcam(1:3,1:3);
+       referencePose.T_wk = T_wcam;
+       referencePose.currImage = currImage;
+
+        else
+              
+             %Keep track of various transformation matrices
               R_wimu = T_wimu(1:3,1:3);
               p_imuw_w = homo2cart(T_wimu*[0 0 0 1]');
               p_camw_w = homo2cart(T_wcam*[0 0 0 1]');
@@ -192,31 +191,65 @@ for measId = measIdsTimeSorted
               R_rcam = T_rcam(1:3,1:3);
               p_camr_r = homo2cart(T_rcam*[0 0 0 1]');
               
-
-           %Figure out the best feature matches between the current and
-           %keyFramePose frame (i.e. 'relative')
-           matches = opencvMatcher.match(referencePose.allSurfFeatures, surfFeatures);
-           [~,sortedMatchIds] = find([matches.distance] < pipelineOptions.minMatchDistance);
-           matches = matches(sortedMatchIds);
-           matchedRelIndices = [[matches.queryIdx]' [matches.trainIdx]'] ;
-           matchedRelIndices = matchedRelIndices + ones(size(matchedRelIndices)); %OpenCV is 0-indexed
+            
+            %Use KL-tracker to find locations of new points
+            KLOldKeyPoints = num2cell(double(referencePose.allKeyPointPixels'), 2)';
+            [KLNewKeyPoints, status, ~] = cv.calcOpticalFlowPyrLK(uint8(referencePose.currImage), uint8(currImage), KLOldKeyPoints);
+            
+            KLOldkeyPointPixels = cell2mat(KLOldKeyPoints(:))';
+            KLNewkeyPointPixels = cell2mat(KLNewKeyPoints(:))';
            
+            % Remove any points that have negative coordinates
+            negCoordIdx = KLNewkeyPointPixels(1,:) < 0 | KLNewkeyPointPixels(2,:) < 0;
+            KLNewkeyPointPixels(:, negCoordIdx) = [];
+            KLOldkeyPointPixels(:, negCoordIdx) = [];
+            
+            %nextKeyPoints = cornerPoints(round(KLNewkeyPointPixels'));
+            %nextKeyPointFeatures = extractFeatures(currImage, nextKeyPoints);
+            %Freak features need the following line
+            %nextKeyPointFeatures = nextKeyPointFeatures.Features;
+            
+            %Create the correspondences (eliminate all incorrect indexes
+            %from the past pose)
+            pastIdx = 1:size(referencePose.allKeyPointPixels, 2);
+            pastIdx(negCoordIdx) = [];
+            currIdx =  1:size(KLNewkeyPointPixels, 2);
+            matchedRelIndices = [pastIdx' currIdx'];
+            
+            %Recalculate the unit vectors
+            KLNewkeyPointUnitVectors = normalize(invK*cart2homo(KLNewkeyPointPixels));
+            
+           
+           
+            
+%            %Bruteforce matching  
+%           %Compute the SURF features 
+%           surfFeatures = opencvExtractor.compute(currImage, surfPoints);
+%            %Figure out the best feature matches between the current and
+%            %keyFramePose frame (i.e. 'relative')
+%            matches = opencvMatcher.match(referencePose.allSurfFeatures, surfFeatures);
+%            [~,sortedMatchIds] = find([matches.distance] < pipelineOptions.minMatchDistance);
+%            matches = matches(sortedMatchIds);
+%            matchedRelIndices = [[matches.queryIdx]' [matches.trainIdx]'] ;
+%            matchedRelIndices = matchedRelIndices + ones(size(matchedRelIndices)); %OpenCV is 0-indexed
+%            
            
            
 
            %Error checking
-           disp(['SURF Matches: ' num2str(size(matchedRelIndices, 1))]);
+           %disp(['SURF Matches: ' num2str(size(matchedRelIndices, 1))]);
 
 
            %Unit bearing vectors for all matched points
-           matchedReferenceUnitVectors = referencePose.allBearingVectors(:, matchedRelIndices(:,1));
-           matchedCurrentUnitVectors =  points_f(:, matchedRelIndices(:,2));
+           matchedReferenceUnitVectors = referencePose.allkeyPointUnitVectors(:, matchedRelIndices(:,1));
+           matchedCurrentUnitVectors =  KLNewkeyPointUnitVectors;
+           
            
            %=======DO WE NEED A NEW KEYFRAME?=============
            %Calculate disparity between the current frame the last keyFramePose
            %disparityMeasure = calcDisparity(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, K);
-           disparityMeasure = calcDisparity(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, K);
-           disp(['Disparity Measure: ' num2str(disparityMeasure)]);
+          disparityMeasure = calcDisparity(KLOldkeyPointPixels, KLNewkeyPointPixels);
+          disp(['Disparity Measure: ' num2str(disparityMeasure)]);
            
            
           if (~initiliazationComplete && disparityMeasure > pipelineOptions.initDisparityThreshold)  || (initiliazationComplete && disparityMeasure > pipelineOptions.kfDisparityThreshold) %(~initiliazationComplete && norm(p_camr_r) > 1) || (initiliazationComplete && norm(p_camr_r) > 1) %(disparityMeasure > INIT_DISPARITY_THRESHOLD) 
@@ -226,7 +259,7 @@ for measId = measIdsTimeSorted
 
                 %disp('Initializing first keyframe');   
                 %disp(['Moved this much: ' ])
-                if keyFrame_i == 3
+                if keyFrame_i == 1
                     initiliazationComplete = true;
                 end
 
@@ -236,15 +269,14 @@ for measId = measIdsTimeSorted
                 disp('Creating new keyframe');   
        
                %Feature descriptors 
-               matchedRelFeatures = surfFeatures(matchedRelIndices(:,2), :);
-               allPixelMeasurements = pixel_locations(:, matchedRelIndices(:,2));
+               matchedRelFeatures = referencePose.allkeyPointFeatures(matchedRelIndices(:,1), :);
                 
               
-              [~, ~, inlierIdx1] = frame2frameRANSAC(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam);
-              inlierIdx2 = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, allPixelMeasurements, K, pipelineOptions);
+              %[~, ~, inlierIdx1] = frame2frameRANSAC(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam);
+              inlierIdx2 = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
               
-              inlierIdx = intersect(inlierIdx1, inlierIdx2);
-              %inlierIdx = inlierIdx2;
+              %inlierIdx = intersect(inlierIdx1, inlierIdx2);
+              inlierIdx = inlierIdx2;
 
               matchedRelFeatures = matchedRelFeatures(inlierIdx, :); 
               matchedReferenceUnitVectors = matchedReferenceUnitVectors(:, inlierIdx);
@@ -258,15 +290,12 @@ for measId = measIdsTimeSorted
             
 
                %Extract the raw pixel measurements
-               currPoints = surfPoints(matchedRelIndices(inlierIdx,2));
-               refPoints = referencePose.allSurfPoints(matchedRelIndices(inlierIdx,1));
-               refPixels = reshape([refPoints.pt], [2, length(refPoints)])';
-               
-               pixelMeasurements = allPixelMeasurements(:, inlierIdx);
+               matchedKeyPointsPixels = KLNewkeyPointPixels(:, inlierIdx);
+               matchedRefKeyPointsPixels = KLOldkeyPointPixels(:, inlierIdx);
                
                %Show feature tracks if requested
                if keyFrame_i > 0 && pipelineOptions.showFeatureTracks
-                    showMatchedFeatures(referencePose.currImage,currImage, refPixels, pixelMeasurements');
+                    showMatchedFeatures(referencePose.currImage,currImage, matchedRefKeyPointsPixels', matchedKeyPointsPixels');
                     drawnow;
                     pause(0.01);
                end
@@ -277,7 +306,7 @@ for measId = measIdsTimeSorted
            
                if size(matchedRelFeatures, 1) > 0 %Ensure there are features!
                    if keyFrame_i == 1
-                        landmarkIds = [largeInt:(largeInt + size(pixelMeasurements, 2) - 1)];
+                        landmarkIds = [largeInt:(largeInt + size(matchedKeyPointsPixels, 2) - 1)];
                         allLandmarkIds = landmarkIds;
                         allLandmarkFeatures = matchedRelFeatures;
                         allLandmarkPositions_w = triangPoints_w;
@@ -287,7 +316,7 @@ for measId = measIdsTimeSorted
                        if isempty(maxId)
                            maxId = largeInt;
                        end
-                       landmarkIds = [(maxId+1):(maxId+size(pixelMeasurements, 2))];
+                       landmarkIds = [(maxId+1):(maxId+size(matchedKeyPointsPixels, 2))];
 
                        %Check for all landmarks that intersect with the
                         %previous keyframe landmarks
@@ -295,7 +324,7 @@ for measId = measIdsTimeSorted
                         %Add unique ids
                         
                         
-                        matchedToAllIndices = matchToGlobalLandmarks( matchedRelFeatures, allLandmarkFeatures, allLandmarkPositions_w, pixelMeasurements, K, T_wcam );
+                        matchedToAllIndices = matchToGlobalLandmarks( matchedRelFeatures, allLandmarkFeatures, allLandmarkPositions_w, matchedKeyPointsPixels, K, T_wcam );
                         
                         %OpenCV way: NOTE matches are not 1to1!
                         %matches = opencvMatcher.match(allLandmarkFeatures, matchedRelFeatures);
@@ -346,15 +375,17 @@ for measId = measIdsTimeSorted
                keyFrames(keyFrame_i).pointCloud = triangPoints_w;
                keyFrames(keyFrame_i).pointCloudSurfFeatures = matchedRelFeatures;
                keyFrames(keyFrame_i).pointCloudBearingVectors = matchedCurrentUnitVectors;
-               keyFrames(keyFrame_i).allSurfPoints = surfPoints;
+               keyFrames(keyFrame_i).allSurfPoints = keyPoints;
 
-               keyFrames(keyFrame_i).pixelMeasurements = pixelMeasurements;
-               keyFrames(keyFrame_i).refPosePixels = refPixels';
+               
+               keyFrames(keyFrame_i).pixelMeasurements = matchedKeyPointsPixels;
+               keyFrames(keyFrame_i).refPosePixels = matchedRefKeyPointsPixels;
                
                keyFrames(keyFrame_i).landmarkIds = landmarkIds; %Unique integer associated with a landmark
                 
-               keyFrames(keyFrame_i).allSurfFeatures = surfFeatures;
-               keyFrames(keyFrame_i).allBearingVectors = points_f;
+               keyFrames(keyFrame_i).allKeyPointPixels = keyPointPixels;
+               keyFrames(keyFrame_i).allkeyPointFeatures = keyPointFeatures;
+               keyFrames(keyFrame_i).allkeyPointUnitVectors = keyPointUnitVectors;
                
                keyFrames(keyFrame_i).currImage = currImage;
 
@@ -364,9 +395,11 @@ for measId = measIdsTimeSorted
                referencePose = keyFrames(keyFrame_i);
 
                keyFrame_i = keyFrame_i + 1;
+           
+           else
+            %No new keyframe   
+              
                
-               
-
            end %if meanDisparity
            
            

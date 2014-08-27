@@ -20,6 +20,13 @@ end
 
 
 %% Where is the data?
+%Roads, Rail, Trees
+ dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0001_sync';
+ dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
+
+%dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0013_sync';
+%dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
+
 %Karslrugh city centre
 %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_29/2011_09_29_drive_0071_sync';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_29';
@@ -37,8 +44,8 @@ end
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
 %Trail through forest
-% dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0087_sync';
-% dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
+ %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0087_sync';
+ %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
 %Turn
 %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
@@ -50,53 +57,57 @@ end
 %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_30';
 
-dataBaseDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26/2011_09_26_drive_0093_sync';
-dataCalibDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26';
+%dataBaseDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26/2011_09_26_drive_0002_sync';
+%dataCalibDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26';
 
+%Ubuntu
+%dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0002_sync';
+%dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
 %% Options
 %Pipeline
-pipelineOptions.featureDetector = 'FAST';
-pipelineOptions.featureCount = 5000;
+pipelineOptions.featureDetector = 'SURF';
+pipelineOptions.featureCount = 500;
 pipelineOptions.descriptorExtractor = 'SURF';
 pipelineOptions.descriptorMatcher = 'BruteForce';
-pipelineOptions.minMatchDistance = 0.2;
+pipelineOptions.minMatchDistance = 0.1;
 
 
 pipelineOptions.initDisparityThreshold = 1;
 pipelineOptions.kfDisparityThreshold = 3;
 pipelineOptions.showFeatureTracks = true;
 
+
 pipelineOptions.inlierThreshold = 2^2;
-pipelineOptions.inlierMinDisparity = 2;
+pipelineOptions.inlierMinDisparity = 3;
 pipelineOptions.inlierMaxForwardDistance = 50;
 
 pipelineOptions.verbose = true;
 
 % g2o options
-g2oOptions.maxPixError = 25;
+g2oOptions.maxPixError = 100;
 g2oOptions.fixLandmarks = false;
 g2oOptions.fixPoses = false;
-g2oOptions.motionEdgeInfoMat = 10^4.5*eye(6);
-g2oOptions.obsEdgeInfoMat = 1/2.5^2*eye(2);
+g2oOptions.motionEdgeInfoMat = inv(diag([0.01^2, 0.01^2,0.01^2, 0.000175^2, 0.000175^2, 0.000175^2]));
+g2oOptions.obsEdgeInfoMat = 0.1*eye(2);
 
 
 
 %% Get ground truth and import data
 % frameNum limits the import to first frameNum frames (if this exceeds the
 % number in the dataset, all frames are used)
-frameRange = 1:20;
+frameRange = 1:10;
 
 %Ground Truth
 T_wIMU_GT = getGroundTruth(dataBaseDir);
 %frameNum = min(size(T_wIMU_GT,3), frameNum);
-T_wIMU_GT = T_wIMU_GT(:,:,frameRange);
+%T_wIMU_GT = T_wIMU_GT(:,:,frameRange);
 
 %Image data
 monoImageData = loadImageDataOpenCV([dataBaseDir '/image_00'], frameRange);
 
 %IMU data
-imuData = loadImuData(dataBaseDir, frameRange);
+imuData = loadImuData(dataBaseDir, 1:1166);
 
 %% Load calibration
 [T_camvelo_struct, K] = loadCalibration(dataCalibDir);
@@ -144,7 +155,7 @@ numClusters = 10;
 %This sets boundaries
 
 %Controls how far from the mean distance each cluster threshold is
-Km = 1.5;
+Km = 1;
 
 meanCentroidDists = zeros(numClusters, 1);
 for ic = 1:numClusters
@@ -155,9 +166,10 @@ clusteringModel.clusterNum = numClusters;
 clusteringModel.centroids = C';
 clusteringModel.threshDists = meanCentroidDists;
 
-%% PCA
-[COEFF,SCORE, latent] = princomp(allPredVectors');
-latent
+%% % PCA
+% [COEFF,SCORE, latent] = princomp(allPredVectors');
+% latent
+% COEFF
 
 %% VIO pipeline
 %Set parameters
@@ -170,18 +182,23 @@ xInit.b_a = zeros(3,1);
 xInit.q = [1;zeros(3,1)];
 
 g_w = -1*rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.81]';
-noiseParams.sigma_g = 0;
-noiseParams.sigma_a = 0;
-noiseParams.sigma_bg = 0;
-noiseParams.sigma_ba = 0;
-noiseParams.tau = 10^12;
+noiseParams.sigma_g = 4e-4;
+noiseParams.sigma_a = 2e-3;
+noiseParams.sigma_bg = 3e-3;
+noiseParams.sigma_ba = 8e-5;
+noiseParams.tau = 3600;
 
  
 %The pipeline
-[T_wc_estimated,T_wimu_estimated, keyFrames, clusterWeightList] = VIOPipelineV2_PRE(K, T_camimu, monoImageData,rgbImageData, imuData, pipelineOptions, noiseParams, xInit, g_w, clusteringModel, T_wCam_GT);
+[T_wc_estimated,T_wimu_estimated, keyFrames, clusterWeightList, allFrames] = VIOPipelineV2_PRE(K, T_camimu, monoImageData,rgbImageData, imuData, pipelineOptions, noiseParams, xInit, g_w, clusteringModel, T_wCam_GT);
 
 %Mean the cluster weights
-clusterWeights = median(clusterWeightList, 1);
+clusterWeights = mean(clusterWeightList, 1)
+
+%% Make movie
+%movie(allFrames,1,3)
+%movie2avi(allFrames,'differentClusters.avi', 'fps', 4)
+
 
 %% G2O
 % Extract unique landmarks
@@ -219,35 +236,42 @@ visualizeVO([], T_wc_estimated(:,:,keyFrameIds), landmarks.position, '- Non Opti
 
 %%
 
-% Optimize the result
-if exist('keyframes.g2o', 'file') == 2
-delete('keyframes.g2o');
-end
-if exist('opt_keyframes.g2o', 'file') == 2
-delete('opt_keyframes.g2o');
-end
+%Use GTSAM
+[T_wc_list_opt, landmarks_w_opt] = processWithGTSAMPreInt(keyFrames,landmarks, K, g2oOptions);
 
-close all;
-visualizeVO([], T_wc_estimated(:,:,keyFrameIds), landmarks.position, '- Non Optimized')
+T_wc_list_opt
 
-exportG2ODataPRE(keyFrames,landmarks, K, 'keyframes.g2o', g2oOptions, clusteringModel, clusterWeights)
+% % Optimize the result
+% if exist('keyframes.g2o', 'file') == 2
+% delete('keyframes.g2o');
+% end
+% if exist('opt_keyframes.g2o', 'file') == 2
+% delete('opt_keyframes.g2o');
+% end
+% 
+% close all;
+% visualizeVO([], T_wc_estimated(:,:,keyFrameIds), landmarks.position, '- Non Optimized')
+% 
+% exportG2ODataPRE(keyFrames,landmarks, K, 'keyframes.g2o', g2oOptions, clusteringModel, clusterWeights)
+% 
+% %command = '!g2o_bin/g2o -i 1000  -  v -robustKernel DCS -solver   lm_dense6_3 -o opt_keyframes.g2o test.g2o';
+% %command = '!g2o_bin/g2o -i 25 -v -solver lm_var -solverProperties initialLambda=0.001 -o -printSolverProperties opt_keyframes.g2o test.g2o';
+% %-robustKernel Cauchy -robustKernelWidth 1
+% 
+% %Check if we're using Ubuntu or OSX
+% if ismac
+%     g2o_exec = '!g2o_bin/g2o_mac';
+% else
+%     g2o_exec = '!g2o_bin/g2o';
+% end
+% command = sprintf('%s -i 1000 -v -solver  lm_var  -o  opt_keyframes.g2o keyframes.g2o', g2o_exec);
+% eval(command);
+% 
+% [T_wc_list_opt, landmarks_w_opt, landmarks_id_opt] = importG2ODataExpMap('opt_keyframes.g2o');
+% 
+% visualizeVO([], T_wc_list_opt, landmarks_w_opt, '- Optimized')
 
-%command = '!g2o_bin/g2o -i 1000  -  v -robustKernel DCS -solver   lm_dense6_3 -o opt_keyframes.g2o test.g2o';
-%command = '!g2o_bin/g2o -i 25 -v -solver lm_var -solverProperties initialLambda=0.001 -o -printSolverProperties opt_keyframes.g2o test.g2o';
-%-robustKernel Cauchy -robustKernelWidth 1
 
-%Check if we're using Ubuntu or OSX
-if ismac
-    g2o_exec = '!g2o_bin/g2o_mac';
-else
-    g2o_exec = '!g2o_bin/g2o';
-end
-command = sprintf('%s -i 1000 -v -solver  lm_dense6_3  -o  opt_keyframes.g2o keyframes.g2o', g2o_exec);
-eval(command);
-
-[T_wc_list_opt, landmarks_w_opt] = importG2ODataExpMap('opt_keyframes.g2o');
-
-visualizeVO([], T_wc_list_opt, landmarks_w_opt, '- Optimized')
 
 % Plot the result
 figure;
@@ -256,7 +280,7 @@ p_CAMw_w_estOpt = zeros(3, size(T_wc_list_opt,3));
 p_CAMw_w_est = zeros(3, size(T_wCam_GT,3));
 
 for i = 1:size(p_CAMw_w_GT,2)
-    p_CAMw_w_GT(:,i) = homo2cart(T_wCam_GT(:,:,i)*[0;0;0;1]);
+    p_CAMw_w_GT(:,i) = homo2cart(T_wCam_GT(:,:,i)*[0;0;0;1]);cl
     p_CAMw_w_est(:,i) = homo2cart(T_wc_estimated(:,:,i)*[0;0;0;1]);
 end
 for i = 1:size(p_CAMw_w_estOpt, 2)
@@ -272,6 +296,8 @@ hold on; grid on;
 plot3(p_CAMw_w_est(1,:), p_CAMw_w_est(2,:), p_CAMw_w_est(3,:),'.-r');
 plot3(p_CAMw_w_estOpt(1,:),p_CAMw_w_estOpt(2,:),p_CAMw_w_estOpt(3,:), '.-g');
 
+xlabel('X'); ylabel('Y'); zlabel('Z');
+%daspect([]);
 view([0 90]);
 
 legend('Ground Truth', 'IMU Only','VIO', 4);
@@ -312,8 +338,8 @@ printf('--------- \n End Euclidian Error (Opt/IMU): %.5f / %.5f', norm(p_CAMw_w_
 opt_errors = p_CAMw_w_GT -  p_CAMw_w_estOpt;
 imu_errors = p_CAMw_w_GT -  p_CAMw_w_est;
 
-mean_opt_euc = mean(sqrt(sum(opt_errors.^2, 1)));
-mean_imu_euc = mean(sqrt(sum(imu_errors.^2, 1)));
+mean_opt_euc = mean(vecNorms(opt_errors));
+mean_imu_euc = mean(vecNorms(imu_errors));
 
 printf('--------- \n Mean Euclidian Error (Opt/IMU): %.5f / %.5f',mean_opt_euc , mean_imu_euc);
 

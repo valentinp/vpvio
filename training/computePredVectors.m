@@ -12,7 +12,7 @@ imageSize = size(rgb(:,:,1))';
 
 
 for i = 1:size(pixelLocations, 2)
-    pixelLoc = pixelLocations(:,i);
+    pixelLoc = round(pixelLocations(:,i));
     pixelLoc = flipud(pixelLoc);
     
     if i == 128

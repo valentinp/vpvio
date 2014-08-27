@@ -96,7 +96,7 @@ for i = 1:length(keyFrames)
     allLandmarkIds = [allLandmarkIds kf.landmarkIds];
 end
 [uniques,numUnique] = count_unique(allLandmarkIds);
-singleObsLandmarkIds =  uniques(numUnique < 2);
+singleObsLandmarkIds =  uniques(numUnique < 3);
 noObsLandmarkIds = setdiff(landmarks.id, uniques);
 badLandmarkIds = union(singleObsLandmarkIds, noObsLandmarkIds);
 

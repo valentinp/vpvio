@@ -81,7 +81,7 @@ figure(2); surf(m);
 addpath('../helpers');
 
 %5-D Training Vectors
-x = rand(5, 10000);
+x = rand(5, 500);
 
 %Crazy function Matt made up
 t_train = (exp(x(1,:).*x(2,:)) - log(x(3,:))).*x(4,:).^5./(1+cos(x(5,:))) + 0.05*randn(1, size(x, 2));

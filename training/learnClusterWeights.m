@@ -11,7 +11,7 @@ function clusterWeights = learnClusterWeights(pixelMeasurements, rgbimage, T_rc_
     for c_id = 1:clusteringModel.clusterNum
         
         %Ensure there are enough points in this cluster
-        if sum(clusterIds == c_id) < 5
+        if sum(clusterIds == c_id) < 10
             continue;
         end
         
@@ -29,7 +29,7 @@ function clusterWeights = learnClusterWeights(pixelMeasurements, rgbimage, T_rc_
         error = acosd(dot(p_rc_c_gt, p_rc_c_est)/(norm(p_rc_c_gt)*norm(p_rc_c_est)));
         
         %German-Maclure weight
-        clusterWeights(c_id) = 100/(1+error^2)^2;
+        clusterWeights(c_id) = 10/(1+error^2)^2;
         
     end
 

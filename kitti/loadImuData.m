@@ -39,8 +39,8 @@ function [imuData] = loadImuData(imuDataFolder, frameRange)
       end
       
      imuData.timestamps(1,i) = timestamps(i);
-     imuData.measAccel(:,i) =  oxtsData{i}(a_index)' + 0.01*randn(3,1);
-     imuData.measOmega(:,i) = oxtsData{i}(omega_index)'+ 0.001*randn(3,1);
+     imuData.measAccel(:,i) =  oxtsData{i}(a_index)';
+     imuData.measOmega(:,i) = oxtsData{i}(omega_index);
 
       
       rx = oxtsData{i}(4); % roll

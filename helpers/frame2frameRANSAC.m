@@ -14,7 +14,7 @@ function [ bestTranslation, bestIdx, inlierIdx] = frame2frameRANSAC(prevPts, cur
 %   --------   
 %   bestTranslation - 3x1 vector
 
-    RANSAC_ITERS = 500;
+    RANSAC_ITERS = 100;
     INLIER_THRESH = 1e-06;
 
     numPts = size(prevPts, 2);

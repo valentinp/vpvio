@@ -9,17 +9,33 @@ function [infoMat] = getObsEdgeInfoMat(predVector, clusteringModel, clusterWeigh
 
 clusterId = getClusterIds(predVector, clusteringModel);
 
-if clusterId > 0
-    infoMat = clusterWeights(clusterId)*eye(2);
-else
-    infoMat = eye(2);
+%Pre-process the weights
+% mW = min(clusterWeights);
+% clusterWeights = clusterWeights - mW;
+% clusterWeights = (clusterWeights + 1);
+
+%     switch clusterId 
+% 
+%         case 0
+%           infoMat = 0.1*eye(2);
+%         case 1
+%             if clusterWeights(1) > clusterWeights(2)
+%                infoMat = eye(2);
+%             else
+%                infoMat = 0.1*eye(2);
+%             end
+%         case 2
+%             if clusterWeights(1) < clusterWeights(2)
+%                infoMat = eye(2);
+%             else
+%                infoMat = 0.1*eye(2);
+%             end
+%     end
+%   if clusterId > 0
+%   infoMat = clusterWeights(clusterId)*eye(2);
+%   else
+%   infoMat = eye(2);
+%   end
+[weightPred, ~] = gp(clusteringModel.hyp2, @infExact, [], @covSEiso, @likGauss, clusteringModel.centroids',clusterWeights', predVector');
+infoMat = max(weightPred, 0)*eye(2); 
 end
-
-% if pixelMeasurement(2) > 320
-%     infoMat = (5)^-2*eye(2);
-% else
-%     infoMat = (0.05)^-2*eye(2);
-% end
-
-end
-

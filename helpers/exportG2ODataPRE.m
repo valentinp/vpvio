@@ -1,5 +1,8 @@
 function exportG2ODataPRE(keyFrames, landmarks, K, fileName, g2oOptions, clusteringModel, clusterWeights)
 %EXPORTG2ODATA Exports poses and landmarks in the form expected by g2o
+addpath('/home/valentin/Research/gpml-matlab-v3.4-2013-11-11');
+startup();
+
 fid = fopen(fileName, 'w');
 
 %Extract intrinsics
@@ -71,7 +74,7 @@ for l_id = 1:length(keyFrames(keyFrameNum).landmarkIds)
     true_pixel_coords = keyFrames(keyFrameNum).pixelMeasurements(:, l_id);
     pix_error = norm(pixel_coords - true_pixel_coords);
     landmarkIds_all = [landmarkIds_all landmarkId];
-        
+    
     if pix_error > g2oOptions.maxPixError
             deleteObservations(keyFrameNum).deleteObs(end+1) = l_id;
     else
@@ -103,7 +106,7 @@ for i = 1:length(keyFrames)
     allLandmarkIds = [allLandmarkIds kf.landmarkIds];
 end
 [uniques,numUnique] = count_unique(allLandmarkIds);
-singleObsLandmarkIds =  uniques(numUnique < 2);
+singleObsLandmarkIds =  uniques(numUnique < 3);
 noObsLandmarkIds = setdiff(landmarks.id, uniques);
 badLandmarkIds = union(singleObsLandmarkIds, noObsLandmarkIds);
 
@@ -151,6 +154,18 @@ for i = 1:length(keyFrames)
     
 end
 
+%Gaussian Process
+    %Training Vectors
+    x = clusteringModel.centroids;
+    t_train = clusterWeights;
+    % %Learn the GP!
+    covfunc = @covSEiso; 
+    likfunc = @likGauss; 
+    hyp2.cov = [0;0];    
+    hyp2.lik = log(0.1);
+    clusteringModel.hyp2 = minimize(hyp2, @gp, -10, @infExact, [], covfunc, likfunc, x', t_train');
+    
+    
 
 for i = 1:length(keyFrames)
     %Pose: VERTEX_SE3:QUAT 713 -118.755 192.299 4.98256 0.00258538 -0.0132626 -0.831404 0.1055504 
@@ -174,7 +189,7 @@ for i = 1:length(keyFrames)
         q_wk = quat_from_rotmat(T_kknext(1:3,1:3));
         
         infoMat = g2oOptions.motionEdgeInfoMat;
-        
+        %infoMat = inv(keyFrames(i).RPrev(1:6, 1:6));
         infoString = '';
         for l = 1:6
             for m = l:6
@@ -191,19 +206,17 @@ for i = 1:length(keyFrames)
     %Print landmark observations
         %infoMat = g2oOptions.obsEdgeInfoMat;
 
-    UseClustersNo = find(clusterWeights > 10);
-    
-    
+    %UseClustersNo = find(clusterWeights > 20);
     
     
     for j = 1:length(landmarkIds)
                 clusterId = getClusterIds(kf.predVectors(:,j), clusteringModel);
-                if ismember(clusterId, UseClustersNo)
-                    infoMat = 10*clusterWeights(clusterId)*eye(2);
-                else
-                    infoMat = 0.1*eye(2);
-                end
-                infoMat = eye(2);
+                %if ismember(clusterId, UseClustersNo)
+                %    infoMat = clusterWeights(clusterId)*g2oOptions.obsEdgeInfoMat;
+                %else
+                %    infoMat = 0.1*g2oOptions.obsEdgeInfoMat;
+                %end
+                infoMat = g2oOptions.obsEdgeInfoMat;
                 %infoMat = getObsEdgeInfoMat(kf.predVectors(:,j), clusteringModel, clusterWeights);
                 landmarkInfoString = [num2str(infoMat(1,1)), ' ', num2str(infoMat(1,2)), ' ', num2str(infoMat(2,2))];
         
