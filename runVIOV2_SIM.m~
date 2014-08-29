@@ -37,13 +37,11 @@ disp('Generating trajectory...');
 simSetup.imuRate = 100; % Hz
 simSetup.cameraRate = 10; % Hz
 simSetup.cameraResolution = [640, 480]; %pixels
-simSetup.simTime =  30;    % seconds
+simSetup.simTime =  10;    % seconds
 
-simSetup.gyroNoiseStd = 1e-3; 
-simSetup.accelNoiseStd = 1e-3;
-simSetup.gyroBiasStd = 3e-3; 
-simSetup.accelBiasStd = 8e-5;
-simSetup.pixelNoiseStd = 0.25; %pixels
+simSetup.gyroNoiseStd = 4e-4; 
+simSetup.accelNoiseStd = 2e-03;
+simSetup.pixelNoiseStd = 0; %pixels
 
 
 
@@ -81,14 +79,19 @@ disp('Done generating measurements.');
 %Set parameters
 close all;
 pipelineOptions.initDisparityThreshold = 1;
-pipelineOptions.kfDisparityThreshold = 25;
+pipelineOptions.kfDisparityThreshold = 10;
 pipelineOptions.showFeatureTracks = true;
 
 
 pipelineOptions.inlierThreshold = 0.5^2;
-pipelineOptions.inlierMinDisparity = 10;
-pipelineOptions.inlierMaxForwardDistance = 100;
+pipelineOptions.inlierMinDisparity = 3;
+pipelineOptions.inlierMaxForwardDistance = 50;
 pipelineOptions.verbose = false;
+
+
+% g2o options
+
+
 
 xInit.p = imuData.initialPosition;
 xInit.v = imuData.initialVelocity;
@@ -98,11 +101,15 @@ xInit.q = imuData.measOrient(:,1);
 
 g_w = [0 0 -9.81]';
 
-noiseParams.sigma_g = 1e-3;
-noiseParams.sigma_a = 1e-3;
-noiseParams.sigma_bg = 1e-10;
-noiseParams.sigma_ba = 1e-10;
+noiseParams.sigma_g = 0;
+noiseParams.sigma_a = 0;
+noiseParams.sigma_bg = 0;
+noiseParams.sigma_ba = 0;
 noiseParams.tau = 10^12;
+
+   currentSummarizedMeasurement = gtsam.ImuFactorPreintegratedMeasurements( ...
+                      currentBias, noiseSigmas.Accel.^2 * eye(3), ...
+                      noiseSigmas.Gyro.^2 * eye(3), 0 * eye(3));
         
                   
 %The pipeline

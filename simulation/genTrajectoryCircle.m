@@ -50,6 +50,9 @@ for i = 1:numSteps
     
     n_a = simSetup.accelNoiseStd*randn(3,1);
     n_w = simSetup.gyroNoiseStd*randn(3,1);
+    b_a = simSetup.gyroBiasStd*randn(3,1);
+    b_w = simSetup.accelBiasStd*randn(3,1);
+    
     
     % Time
     t = (i-1)/samplingRate;
@@ -85,10 +88,14 @@ for i = 1:numSteps
     
     
     % Save in struct.
-    imuData.timestamps(i) = t - 1e-8;
+    if i == 1
+        imuData.timestamps(i) = 1e-8;
+    else
+        imuData.timestamps(i) = t - 1e-8;
+    end
     T_wIMU(:,:, i) = [R_wIMU  p_IMUw_w; 0, 0, 0, 1];
-    imuData.measAccel(:,i)= R_wIMU'*(aw + g_w + n_a);
-    imuData.measOmega(:,i) = wi + n_w;
+    imuData.measAccel(:,i)= R_wIMU'*(aw - g_w + n_a + b_a);
+    imuData.measOmega(:,i) = wi + n_w + b_w;
     imuData.euler(:,i) = ewi;
     
     imuData.measOrient(:,i) = quat_from_rotmat(rotmat_from_rpy(ewi));

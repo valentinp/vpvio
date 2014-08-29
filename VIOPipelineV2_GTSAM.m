@@ -1,4 +1,4 @@
-function [T_wcam_estimated,T_wimu_estimated, keyFrames] = VIOPipelineV2(K, T_camimu, monoImageData, imuData, pipelineOptions, noiseParams, xInit, g_w)
+function [T_wcam_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAM(K, T_camimu, monoImageData, imuData, pipelineOptions, noiseParams, xInit, g_w)
 %VIOPIPELINE Run the Visual Inertial Odometry Pipeline
 % K: camera intrinsics
 % T_camimu: transformation from the imu to the camera frame
@@ -19,10 +19,33 @@ function [T_wcam_estimated,T_wimu_estimated, keyFrames] = VIOPipelineV2(K, T_cam
 
 % Import opencv
 import cv.*;
+import gtsam.*;
 
 %==========VO PIPELINE=============
 R_camimu = T_camimu(1:3, 1:3); 
 %==============================
+
+
+%===GTSAM INITIALIATION====%
+currentPoseGlobal = Pose3(Rot3(), Point3()); % initial pose is the reference frame (navigation frame)
+currentVelocityGlobal = LieVector(xInit.v); 
+currentBias = imuBias.ConstantBias(zeros(3,1), zeros(3,1));
+sigma_init_x = noiseModel.Isotropic.Precisions([ 0.0; 0.0; 0.0; 1; 1; 1 ]);
+sigma_init_v = noiseModel.Isotropic.Sigma(3, 1000.0);
+sigma_init_b = noiseModel.Isotropic.Sigmas([ 0.100; 0.100; 0.100; 5.00e-05; 5.00e-05; 5.00e-05 ]);
+noiseModelGPS = noiseModel.Diagonal.Precisions([ [0;0;0]; [1;1;1] ]);
+IMU_metadata.AccelerometerBiasSigma = 0.000167;
+IMU_metadata.GyroscopeBiasSigma = 2.91e-006;
+sigma_between_b = [ IMU_metadata.AccelerometerBiasSigma * ones(3,1); IMU_metadata.GyroscopeBiasSigma * ones(3,1) ];
+w_coriolis = [0;0;0];
+
+% Solver object
+isamParams = ISAM2Params;
+%isamParams.setFactorization('CHOLESKY');
+isam = gtsam.ISAM2(isamParams);
+newFactors = NonlinearFactorGraph;
+newValues = Values;
+%==========================%
 
 
 invK = inv(K);
@@ -56,10 +79,28 @@ allTimestamps = [monoImageData.timestamps imuData.timestamps];
 
 camMeasId = 0;
 imuMeasId = 0;
+firstImageProcessed = false;
 
 
 %Initialize the state
 xPrev = xInit;
+
+% =========== GTSAM ============
+currentPoseKey = symbol('x',1);
+currentVelKey =  symbol('v',1);
+currentBiasKey = symbol('b',1);
+newValues.insert(currentPoseKey, currentPoseGlobal);
+newValues.insert(currentVelKey, currentVelocityGlobal);
+newValues.insert(currentBiasKey, currentBias);
+newFactors.add(PriorFactorPose3(currentPoseKey, currentPoseGlobal, sigma_init_x));
+newFactors.add(PriorFactorLieVector(currentVelKey, currentVelocityGlobal, sigma_init_v));
+newFactors.add(PriorFactorConstantBias(currentBiasKey, currentBias, sigma_init_b));
+insertedKeyPointIds = [];
+      currentSummarizedMeasurement = gtsam.ImuFactorPreintegratedMeasurements( ...
+          currentBias, 0.01.^2 * eye(3), ...
+          0.000175.^2 * eye(3), 0 * eye(3));
+% ==============================
+
 
 %Initialize the history
 R_wimu = rotmat_from_quat(xPrev.q);
@@ -67,6 +108,7 @@ R_imuw = R_wimu';
 p_imuw_w = xPrev.p;
 T_wimu_estimated = inv([R_imuw -R_imuw*p_imuw_w; 0 0 0 1]);
 T_wcam_estimated = T_wimu_estimated*inv(T_camimu);
+
 
 iter = 1;
 
@@ -100,8 +142,7 @@ for measId = measIdsTimeSorted
         try     
             dt = imuData.timestamps(imuMeasId) - imuData.timestamps(imuMeasId - 1);
         catch
-            disp('WARNING: Cannot calculate dt. Assuming IMU recording rate of 10Hz.');
-            dt = 0.1;
+            dt = imuData.timestamps(imuMeasId +1) - imuData.timestamps(imuMeasId);
         end
         
         %Extract the measurements
@@ -111,11 +152,15 @@ for measId = measIdsTimeSorted
         %Predict the next state
         
         [xPrev] = integrateIMU(xPrev, imuAccel, imuOmega, dt, noiseParams, g_w);
-         
         R_wimu = rotmat_from_quat(xPrev.q);
         R_imuw = R_wimu';
         p_imuw_w = xPrev.p;
-         
+        
+        %=======GTSAM=========
+        currentSummarizedMeasurement.integrateMeasurement(imuAccel, imuOmega, dt);
+        %=====================
+        
+        
         
         %Keep track of the state
         %Note: we don't propagate the state at the last measurement to
@@ -132,8 +177,13 @@ for measId = measIdsTimeSorted
         if pipelineOptions.verbose
             disp(['Processing Camera Measurement. ID: ' num2str(camMeasId)]); 
         end
-                
         
+         if camMeasId == 50
+             break;
+         end
+        if imuMeasId < 2
+            continue;
+        end
         %Get measurement data
         %camMeasId
         currImage = monoImageData.rectImages(:,:,camMeasId);
@@ -141,6 +191,9 @@ for measId = measIdsTimeSorted
         %The last IMU state
         T_wimu = T_wimu_estimated(:,:, end);
         T_wcam = T_wcam_estimated(:,:, end);
+        
+
+        
 
             
 
@@ -148,7 +201,9 @@ for measId = measIdsTimeSorted
        %If it's the first camera measurements, we're done. Otherwise
        %continue with pipeline
        largeInt = 1329329;
-        if camMeasId == 1
+        if firstImageProcessed == false
+       
+       firstImageProcessed = true;
         %Extract keyPoints
         keyPoints = detectMinEigenFeatures(mat2gray(currImage));
         keyPoints = keyPoints.selectStrongest(pipelineOptions.featureCount);
@@ -224,7 +279,39 @@ for measId = measIdsTimeSorted
                end
                %====== END INITIALIZATION ========
 
-                disp('Creating new keyframe');   
+                disp('Creating new keyframe');  
+                
+                
+                        %=========== GTSAM ===========
+        
+        % At each non=IMU measurement we initialize a new node in the graph
+          currentPoseKey = symbol('x',keyFrame_i+1);
+          currentVelKey =  symbol('v',keyFrame_i+1);
+          currentBiasKey = symbol('b',keyFrame_i+1);
+  
+             % Summarize IMU data between the previous GPS measurement and now
+              newFactors.add(ImuFactor( ...
+      currentPoseKey-1, currentVelKey-1, ...
+      currentPoseKey, currentVelKey, ...
+      currentBiasKey, currentSummarizedMeasurement, g_w, w_coriolis));
+  
+        currentSummarizedMeasurement = gtsam.ImuFactorPreintegratedMeasurements( ...
+          currentBias, 0.01.^2 * eye(3), ...
+          0.000175.^2 * eye(3), 0 * eye(3));
+
+              currPose = Pose3(T_wimu);
+             
+
+  newFactors.add(BetweenFactorConstantBias(currentBiasKey-1, currentBiasKey, imuBias.ConstantBias(zeros(3,1), zeros(3,1)), ...
+      noiseModel.Diagonal.Sigmas(1 * sigma_between_b)));
+
+  if keyFrame_i < 2
+      newFactors.add(NonlinearEqualityPose3(currentPoseKey, currPose));
+  end
+    newValues.insert(currentPoseKey, currPose);
+    newValues.insert(currentVelKey, currentVelocityGlobal);
+    newValues.insert(currentBiasKey, currentBias);
+        %=============================
        
                %Feature descriptors 
                %matchedRelFeatures = referencePose.allkeyPointFeatures(matchedRelIndices(:,1), :);
@@ -275,7 +362,55 @@ for measId = measIdsTimeSorted
                end
                
              
+                %=========GTSAM==========
+                %Extract intrinsics
+                f_x = K(1,1);
+                f_y = K(2,2);
+                c_x = K(1,3);
+                c_y = K(2,3);
+
+                % Create realistic calibration and measurement noise model
+                % format: fx fy skew cx cy baseline
+                K_GTSAM = Cal3_S2(f_x, f_y, 0, c_x, c_y);
+                mono_model_n = noiseModel.Diagonal.Sigmas([0.5,0.5]');
+
+    
+              
+                pointPriorNoise  = noiseModel.Isotropic.Sigma(3,1);
+                if keyFrame_i > 1
+                   for kpt_j = 1:min(10000,length(keyPointIds))
+                        %Make sure we haven't inserted this id in before
+                        if ~ismember(keyPointIds(kpt_j), insertedKeyPointIds)
+                            newValues.insert(keyPointIds(kpt_j), Point3(triangPoints_w(:, kpt_j)));
+                            
+                            insertedKeyPointIds = [insertedKeyPointIds keyPointIds(kpt_j)];
+                            %Previous observation
+                            newFactors.add(GenericProjectionFactorCal3_S2(Point2(double(matchedRefKeyPointsPixels(:,kpt_j))), mono_model_n, currentPoseKey-1, keyPointIds(kpt_j), K_GTSAM,  Pose3(inv(T_camimu))));
+                        end
+                        %Current observation
+                        newFactors.add(PriorFactorPoint3(keyPointIds(kpt_j), Point3(triangPoints_w(:, kpt_j)), pointPriorNoise));
+                        newFactors.add(GenericProjectionFactorCal3_S2(Point2(double(matchedKeyPointsPixels(:,kpt_j))), mono_model_n, currentPoseKey, keyPointIds(kpt_j), K_GTSAM, Pose3(inv(T_camimu))));
+                   end
+                end
+                if keyFrame_i > 2
+                %Solve the thing!
+                isam.update(newFactors, newValues);
+                newFactors = NonlinearFactorGraph;
+                newValues = Values;
+                currentVelocityGlobal = isam.calculateEstimate(currentVelKey);
                 
+                currentBias = isam.calculateEstimate(currentBiasKey);
+                currentPoseGlobal = isam.calculateEstimate(currentPoseKey);
+                disp(currentPoseGlobal.translation())
+                T_wimu_gtsam(:,:,end+1) = currentPoseGlobal.matrix;
+                else
+                    if  keyFrame_i == 1
+                        T_wimu_gtsam = T_wimu;
+                    else
+                        T_wimu_gtsam(:,:,end+1) = T_wimu;
+                    end
+                end
+                %========================
    
                disp(['Triangulated landmarks: ' num2str(size(triangPoints_w,2))])
                

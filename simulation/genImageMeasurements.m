@@ -18,7 +18,7 @@ k = 1;
 
 for i = 1:size(T_wCam_GT,3)
     
-    if mod(i, sampleRateFactor) == 0
+    if mod(i, sampleRateFactor) == 0 || i == 1
         
         
         landmarks_cam = homo2cart(inv(T_wCam_GT(:,:,i))*cart2homo(landmarks_w));
