@@ -34,10 +34,10 @@ T_camimu = eye(4);
 close all;
 disp('Generating trajectory...');
 %Simulation parameters
-simSetup.imuRate = 100; % Hz
-simSetup.cameraRate = 10; % Hz
+simSetup.imuRate = 200; % Hz
+simSetup.cameraRate = 5; % Hz
 simSetup.cameraResolution = [640, 480]; %pixels
-simSetup.simTime =  30;    % seconds
+simSetup.simTime =  60;    % seconds
 
 simSetup.gyroNoiseStd = 1e-3; 
 simSetup.accelNoiseStd = 1e-3;

@@ -273,8 +273,6 @@ for measId = measIdsTimeSorted
        currentPoseKey, currentVelKey, ...
       currentBiasKey, currentSummarizedMeasurement, g_w, w_coriolis));
 
-        newFactors.add(BetweenFactorPose3(currentPoseKey-1, currentPoseKey, Pose3(T_rimu),  noiseModel.Diagonal.Sigmas([0.01 0.01 0.01 0.01 0.01 0.01]')));
-
    currentSummarizedMeasurement = gtsam.ImuFactorPreintegratedMeasurements( ...
                       currentBias, noiseParams.sigma_a.^2 * eye(3), ...
                       noiseParams.sigma_g.^2 * eye(3), 0 * eye(3));
@@ -320,9 +318,9 @@ for measId = measIdsTimeSorted
                 % format: fx fy skew cx cy baseline
                 K_GTSAM = Cal3_S2(f_x, f_y, 0, c_x, c_y);
                 %mono_model_n = noiseModel.Diagonal.Sigmas([0.2,0.2]');
-                mono_model_n_robust = noiseModel.Robust(noiseModel.mEstimator.Huber(1), noiseModel.Diagonal.Sigmas([0.5,0.5]'));
+                mono_model_n_robust = noiseModel.Robust(noiseModel.mEstimator.Huber(2), noiseModel.Diagonal.Sigmas([0.25,0.25]'));
                 %pointNoiseInitial = noiseModel.Robust(noiseModel.mEstimator.Huber(0.1), noiseModel.Isotropic.Sigma(3, 1)); 
-                pointNoise = noiseModel.Robust(noiseModel.mEstimator.Huber(1), noiseModel.Isotropic.Sigma(3, 1)); 
+                pointNoise = noiseModel.Robust(noiseModel.mEstimator.Huber(1), noiseModel.Isotropic.Sigma(3, 2)); 
                 
                 %====== INITIALIZATION ========
                if ~initiliazationComplete
