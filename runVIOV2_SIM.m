@@ -37,7 +37,7 @@ disp('Generating trajectory...');
 simSetup.imuRate = 200; % Hz
 simSetup.cameraRate = 5; % Hz
 simSetup.cameraResolution = [640, 480]; %pixels
-simSetup.simTime =  60;    % seconds
+simSetup.simTime =  38;    % seconds
 
 simSetup.gyroNoiseStd = 1e-3; 
 simSetup.accelNoiseStd = 1e-3;
@@ -81,7 +81,7 @@ disp('Done generating measurements.');
 %Set parameters
 close all;
 pipelineOptions.initDisparityThreshold = 1;
-pipelineOptions.kfDisparityThreshold = 25;
+pipelineOptions.kfDisparityThreshold = 100;
 pipelineOptions.showFeatureTracks = true;
 
 

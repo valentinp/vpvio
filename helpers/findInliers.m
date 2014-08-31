@@ -1,8 +1,7 @@
-function [inlierIdx] = findInliers(prevPts, currPts, R_rcam, p_camr_r, pixelMeasurements_c, K, pipelineOptions, clusterIds)
+function [inlierIdx] = findInliers(prevPts, currPts, R_rcam, p_camr_r, pixelMeasurements_c, K, pipelineOptions)
 % findInliers Finds inliers from unit measurement vectors based on a
 % threshold reprojection test
         
-        useOnlyCluster = 1;
         T_camr = [R_rcam' -R_rcam'*p_camr_r; 0 0 0 1];
         
         triangPoints_r = triangulate2(prevPts, currPts, R_rcam, p_camr_r); 
@@ -12,8 +11,7 @@ function [inlierIdx] = findInliers(prevPts, currPts, R_rcam, p_camr_r, pixelMeas
         simulatedPixels_r = homo2cart(K*R_rcam*triangPoints_c);
         
         %Check disparity
-        %disparity = simulatedPixels_c(1,:) - simulatedPixels_r(1,:);
-        disparity = 10000;
+        disparity = simulatedPixels_c(1,:) - simulatedPixels_r(1,:);
         %Check image space error vectors
         error_vecs = simulatedPixels_c - pixelMeasurements_c;
         error_norms = sum(error_vecs.^2, 1);

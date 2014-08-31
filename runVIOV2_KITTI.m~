@@ -111,11 +111,11 @@ close all;
 %Pipeline
 pipelineOptions.featureCount = 1000;
 pipelineOptions.initDisparityThreshold = 1;
-pipelineOptions.kfDisparityThreshold = 5;
+pipelineOptions.kfDisparityThreshold = 10;
 pipelineOptions.showFeatureTracks = false;
 
 
-pipelineOptions.inlierThreshold = 0.75^2;
+pipelineOptions.inlierThreshold = 1^2;
 pipelineOptions.inlierMinDisparity = 2;
 pipelineOptions.inlierMaxForwardDistance = 100;
 
@@ -128,13 +128,11 @@ xInit.b_g = zeros(3,1);
 xInit.b_a = zeros(3,1);
 xInit.q = [1;zeros(3,1)];
 
-g_w = -1*rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.82]';
-%g_w = [0 0 -9.81]';
-
+g_w = -1*rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.81]';
 noiseParams.sigma_g = 1e-3;
-noiseParams.sigma_a = 1e-4;
-noiseParams.sigma_bg = 1e-5;
-noiseParams.sigma_ba = 1e-5;
+noiseParams.sigma_a = 0.5e-3;
+noiseParams.sigma_bg = 1e-4;
+noiseParams.sigma_ba = 1e-4;
 noiseParams.tau = 10^12;
 
  

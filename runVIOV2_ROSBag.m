@@ -12,18 +12,40 @@ addpath('kitti');
 addpath('/home/valentin/Dropbox/Research/Ubuntu/opengv/matlab');
 addpath('~/mexopencv/');
 addpath('/home/valentin/Dropbox/UTIAS - MASc/Code/MATLAB/matlab_rosbag-0.4-linux64/');
+if ismac
+    addpath('/Users/valentinp/Research/gtsam_toolbox');
+else
+    addpath('~/Dropbox/Research/Ubuntu/gtsam_toolbox/');
+end
+ import gtsam.*;
 
 %% Parameters
-rosBagFileName = '/home/valentin/Desktop/CSAIL/2012-01-27-07-37-01.bag';
-imuTopic = '/torso_lift_imu/data';
-flea3Topic = '/wide_stereo/left/image_raw';
+%Nexus 5
+% rosBagFileName = '/home/valentin/Desktop/2014-08-31-00-32-00.bag';
+% imuTopic = '/android/imu';
+% flea3Topic = '/camera/image_raw';
+% 
+% 
+% imageSize = [640 480];
+% %Intrinsics
+% K = [424.782760, 0.000000, 323.159380;
+% 0.000000,  424.990290, 249.008680;
+% 0.000000,  0.000000,   1.000000];
+% R_camimu = rotyd(-180)*rotxd(90);
+% p_camimu_imu = [-3; 1; -2]*0.01;
+% T_camimu = [R_camimu -R_camimu*p_camimu_imu; 0 0 0 1];
+
+%% Parameters
+rosBagFileName = '/home/valentin/Desktop/Crucifix/2014-06-25-20-42-24.bag';
+imuTopic = '/microstrain/imu/data';
+flea3Topic = '/flea3/camera/image_rect';
 
 
-imageSize = [640 480];
+imageSize = [1280 960];
 %Intrinsics
-K = [424.782760, 0.000000, 323.159380;
-0.000000,  424.990290, 249.008680;
-0.000000,  0.000000,   1.000000];
+K = [1233.234863 0.000000 668.973851;
+0.000000 1251.191040 490.969672;
+0.000000 0.000000 1.000000];
 R_camimu = rotyd(-180)*rotxd(90);
 p_camimu_imu = [-3; 1; -2]*0.01;
 T_camimu = [R_camimu -R_camimu*p_camimu_imu; 0 0 0 1];
@@ -45,10 +67,12 @@ imuData = {};
 monoImageData.rectImages =zeros(imageSize(2), imageSize(1), length(bagImageData));
 monoImageData.timestamps = zeros(1, length(bagImageData));
 for i=1:length(bagImageData)
-    monoImageData.rectImages(:,:,i) = reshape(bagImageData{i}.data, imageSize(1), imageSize(2))';
+    monoImageData.rectImages(:,:,i) = reshape(bagImageData{i}.data(2:3:end), imageSize(1), imageSize(2))';
     monoImageData.timestamps(i) = bagImageData{i}.header.stamp.time;
 end
 %clear bagImageData;
+
+timeOffset = bagImageData{1}.header.stamp.time - bagImuData{1}.header.stamp.time;
 
 %% Process imu data
 % imuData: struct with IMU data:
@@ -68,7 +92,7 @@ imuData.measAccel = zeros(3, length(bagImuData));
 imuData.measOrient = zeros(4, length(bagImuData));
 imuData.measOmega = zeros(3, length(bagImuData));
 for i=1:length(bagImuData)
-     imuData.timestamps(1,i) = bagImuData{i}.header.stamp.time;
+     imuData.timestamps(1,i) = bagImuData{i}.header.stamp.time + timeOffset;
      imuData.measAccel(:,i) = bagImuData{i}.linear_acceleration;
      imuData.measOrient(:,i) = [bagImuData{i}.orientation(4); bagImuData{i}.orientation(1:3)];
      imuData.measOmega(:,i) = bagImuData{i}.angular_velocity;
@@ -76,165 +100,113 @@ end
 
 %% VIO pipeline
 %Set parameters
-close all;
-simParams = {};
-simParams.INIT_DISPARITY_THRESHOLD = 10^2; %in squared pixels
-simParams.KF_DISPARITY_THRESHOLD = 2^2; %in squared pixels
-simParams.MIN_FEATURE_MATCHES = 3;
-simParams.LIVE_PLOT = false;
-simParams.VERBOSE = true;
-
 xInit.p = zeros(3,1);
 xInit.v = zeros(3,1);
 xInit.b_g = zeros(3,1);
 xInit.b_a = zeros(3,1);
 xInit.q = [1;zeros(3,1)];
 
-g_w = -1*rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 -9.81]';
-noiseParams.sigma_g = 0;
-noiseParams.sigma_a = 0;
-noiseParams.sigma_bg = 0;
-noiseParams.sigma_ba = 0;
+%g_w = -1*rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.81]';
+g_w = zeros(3,1);
+noiseParams.sigma_g = 1e-3;
+noiseParams.sigma_a = 1e-3;
+noiseParams.sigma_bg = 1e-3;
+noiseParams.sigma_ba = 1e-3;
 noiseParams.tau = 10^12;
 
  
-%The pipeline
-[T_wc_estimated,T_wimu_estimated, keyFrames] = VIOPipelineV2(K, T_camimu, monoImageData, imuData, simParams, noiseParams, xInit, g_w);
-
-% Plot the result
-figure;
-p_CAMw_w_est = zeros(3, size(T_wc_estimated,3));
-
-for i = 1:size(T_wc_estimated,3)
-    p_CAMw_w_est(:,i) = homo2cart(T_wc_estimated(:,:,i)*[0;0;0;1]);
-end
-
-plot3(p_CAMw_w_est(1,:), p_CAMw_w_est(2,:), p_CAMw_w_est(3,:),'.-r');
-hold on; grid on;
-view([0 90]);
-%% G2O
-% Extract unique landmarks
-landmarks.id = [];
-landmarks.position = [];
-landmarks.count = [];
-
-keyFrameIds = zeros(1, length(keyFrames));
-totalLandmarks = 0;
-
-for i = 1:length(keyFrames)
-     kf = keyFrames(i);
-     
-    landmarkIds = kf.landmarkIds;
-    landmarkPositions = kf.pointCloud;
-    totalLandmarks = totalLandmarks + size(landmarkPositions, 2);
-    
-    %Deprecated version
-    [newLandmarkIds,idx] = setdiff(landmarkIds,landmarks.id);
-    landmarks.id = [landmarks.id newLandmarkIds];
-    landmarks.position = [landmarks.position landmarkPositions(:, idx)];
-
-    %New version: landmarks initialized to mean position
-%     for j = 1:length(landmarkIds)
-%         lid = landmarkIds(j);
-%         if ismember(lid, landmarks.id)
-%           landmarks.position(:,landmarks.id == lid) = landmarks.position(:,landmarks.id == lid) + landmarkPositions(:,j);
-%           landmarks.count(landmarks.id == lid) = landmarks.count(landmarks.id == lid) + 1;
-%         else
-%           landmarks.id = [landmarks.id lid];
-%           landmarks.position = [landmarks.position landmarkPositions(:, j)];
-%           landmarks.count = [landmarks.count 1];
-%         end
-%     end
-    
-    keyFrameIds(i) = kf.imuMeasId;
-end
-
-%landmarks.position = landmarks.position./repmat(landmarks.count, [3,1]);
-
-disp(['Total Keyframes: ' num2str(length(keyFrames))]);
-disp(['Total unique tracked landmarks: ' num2str(length(landmarks.id))]);
-disp(['Total triangulated landmarks: ' num2str(totalLandmarks)]);
-
-%
-close all
-visualizeVO([], T_wc_estimated(:,:,keyFrameIds), landmarks.position, '- Non Optimized')
-%figure
-%plot3(landmarks.position(1,:),landmarks.position(2,:),landmarks.position(3,:), '*b')
-%visualizeVO([], keyFrames(1).T_wk, keyFrames(1).pointCloud, '- Non Optimized')
-
-%%
-%close all;
-%%
-%Use GTSAM?
-% import gtsam.*;
-% addpath('/home/valentin/Dropbox/Research/Ubuntu/gtsam_toolbox/');
-% [T_wc_list_opt, landmarks_w_opt] = processWithGTSAM(keyFrames,landmarks, K);
-
-
-% Optimize the result
-if exist('keyframes.g2o', 'file') == 2
-delete('keyframes.g2o');
-end
-if exist('opt_keyframes.g2o', 'file') == 2
-delete('opt_keyframes.g2o');
-end
-
-
-
+%Set parameters
 close all;
-visualizeVO([], T_wc_estimated(:,:,keyFrameIds), landmarks.position, '- Non Optimized')
+pipelineOptions.featureCount = 1000;
+pipelineOptions.initDisparityThreshold = 0.5;
+pipelineOptions.kfDisparityThreshold = 2;
+pipelineOptions.showFeatureTracks = true;
 
-exportG2ODataExpMap(keyFrames,landmarks, K, 'keyframes.g2o', false)
 
-%command = '!g2o_bin/g2o -i 1000  -  v -robustKernel DCS -solver   lm_dense6_3 -o opt_keyframes.g2o test.g2o';
-%command = '!g2o_bin/g2o -i 25 -v -solver lm_var -solverProperties initialLambda=0.001 -o -printSolverProperties opt_keyframes.g2o test.g2o';
-%-robustKernel Cauchy -robustKernelWidth 1
+pipelineOptions.inlierThreshold = 100^2;
+pipelineOptions.inlierMinDisparity = 2;
+pipelineOptions.inlierMaxForwardDistance = 100;
 
-command = '!g2o_bin/g2o -i 1000 -v -solver lm_dense6_3 -o  opt_keyframes.g2o keyframes.g2o';
-eval(command);
-%command2 = '!g2o_bin/g2o -i 1000 -v  -solver lm_dense6_3 -solverProperties initialLambda=0.001 -o  opt_keyframes.g2o int_keyframes.g2o';
-%eval(command2);
+pipelineOptions.verbose = true;
 
-[T_wc_list_opt, landmarks_w_opt] = importG2ODataExpMap('opt_keyframes.g2o');
+%The pipeline
+[T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAM(K, T_camimu, monoImageData, imuData, pipelineOptions, noiseParams, xInit, g_w);
 
-visualizeVO([], T_wc_list_opt, landmarks_w_opt, '- Optimized')
 
-% Plot the result
+
+% Plot the estimated values
 figure;
-p_CAMw_w_estOpt = zeros(3, size(T_wc_list_opt,3));
-p_CAMw_w_est = zeros(3, size(T_wc_estimated,3));
+p_IMUw_w_GT = zeros(3, length(keyFrames));
+%p_IMUw_w_int = zeros(3, length(keyFrames));
+p_IMUw_w_gtsam = zeros(3, length(keyFrames));
 
-for i = 1:size(p_CAMw_w_est,2)
-    p_CAMw_w_est(:,i) = homo2cart(T_wc_estimated(:,:,i)*[0;0;0;1]);
+% Get the keyframe IMU ids
+keyFrameIdsIMU = zeros(1, length(keyFrames));
+for kf_i = 1:length(keyFrames)
+    keyFrameIdsIMU(kf_i) = keyFrames(kf_i).imuMeasId;
+    %p_IMUw_w_GT(:,kf_i) = homo2cart(T_wIMU_GT(:,:,keyFrames(kf_i).imuMeasId)*[0;0;0;1]);
+    p_IMUw_w_int(:,kf_i) = homo2cart(T_wimu_estimated(:,:,keyFrames(kf_i).imuMeasId)*[0;0;0;1]);
+    p_IMUw_w_gtsam(:,kf_i) = homo2cart(T_wimu_gtsam(:,:,kf_i)*[0;0;0;1]);
 end
-for i = 1:size(p_CAMw_w_estOpt, 2)
-    p_CAMw_w_estOpt(:,i) = homo2cart(T_wc_list_opt(:,:,i)*[0;0;0;1]);
-end
-
-p_CAMw_w_est = p_CAMw_w_est(:, keyFrameIds);
 
 
-%  plot(p_CAMw_w_GT(1,:), '-r');
-%  hold on; grid on;
-%  plot(p_CAMw_w_GT(2,:), '-g');
-%  plot(p_CAMw_w_GT(3,:), '-b');
-% 
-% plot(p_CAMw_w_estOpt(1,:), '--r');
-% hold on; grid on;
-% plot(p_CAMw_w_estOpt(2,:), '--g');
-% plot(p_CAMw_w_estOpt(3,:), '--b');
-% 
-% plot(p_CAMw_w_est(1,:), '.-r');
-% hold on; grid on;
-% plot(p_CAMw_w_est(2,:), '.-g');
-% plot(p_CAMw_w_est(3,:), '.-b');
 
+%plot3(p_IMUw_w_GT(1,:),p_IMUw_w_GT(2,:),p_IMUw_w_GT(3,:), '.-k');
 hold on; grid on;
-plot3(p_CAMw_w_est(1,:), p_CAMw_w_est(2,:), p_CAMw_w_est(3,:),'.-r');
-plot3(p_CAMw_w_estOpt(1,:),p_CAMw_w_estOpt(2,:),p_CAMw_w_estOpt(3,:), '.-g');
+plot3(p_IMUw_w_int(1,:), p_IMUw_w_int(2,:), p_IMUw_w_int(3,:),'.-r');
+plot3(p_IMUw_w_gtsam(1,:),p_IMUw_w_gtsam(2,:),p_IMUw_w_gtsam(3,:), '.-g');
+set (gcf(), 'outerposition', [25 1000, 560, 470])
 
 view([0 90]);
 
-legend('IMU Only','VIO', 4);
+legend('Integrated','GTSAM', 4)
 
 
+% % Calculate Relative Pose Error
+% % Take only the poses at the keyframes
+% T_wIMU_GT_sync = T_wIMU_GT(:,:,keyFrameIdsIMU);
+% T_wimu_est_sync = T_wimu_estimated(:,:, keyFrameIdsIMU);
+% 
+% RMSE_RPE_imuonly_list = zeros(1, size(T_wIMU_GT_sync,3)-1);
+% RMSE_RPE_gtsam_list =zeros(1, size(T_wIMU_GT_sync,3)-1);
+% 
+% %Iterative through different step sizes
+% for dstep = 1:size(T_wIMU_GT_sync,3)-1
+% 
+%     RPE_opt =  zeros(4,4, size(T_wIMU_GT_sync,3) - dstep);
+%     RPE_imuonly = RPE_opt;
+% 
+%     for i = 1:(size(T_wIMU_GT_sync,3)-dstep)
+%         RPE_opt(:,:,i) = inv(inv(T_wIMU_GT_sync(:,:,i))*T_wIMU_GT_sync(:,:,i+dstep))*inv(T_wimu_gtsam(:,:,i))*T_wimu_gtsam(:,:,i+dstep); 
+%         RPE_imuonly(:,:,i) = inv(inv(T_wIMU_GT_sync(:,:,i))*T_wIMU_GT_sync(:,:,i+dstep))*inv(T_wimu_est_sync(:,:,i))*T_wimu_est_sync(:,:,i+dstep);  
+%     end
+% 
+%     %Calculate the root mean squared error of all the relative pose errors
+%     RMSE_RPE_opt = 0;
+%     RMSE_RPE_imuonly = 0;
+% 
+%     for i = 1:size(RPE_opt,3)
+%         RMSE_RPE_opt = RMSE_RPE_opt + norm(RPE_opt(1:3,4,i))^2;
+%         RMSE_RPE_imuonly = RMSE_RPE_imuonly + norm(RPE_imuonly(1:3,4,i))^2;  
+%     end
+%     RMSE_RPE_imuonly_list(dstep) = sqrt(RMSE_RPE_imuonly/size(RPE_opt,3));
+%     RMSE_RPE_gtsam_list(dstep) = sqrt(RMSE_RPE_opt/size(RPE_opt,3));
+% end
+% 
+% RMSE_RPE_opt = mean(RMSE_RPE_gtsam_list);
+% RMSE_RPE_imuonly = mean(RMSE_RPE_imuonly_list);
+% 
+% %Add to the title
+% title(sprintf('Mean RMSE RPE (Optimized/IMU Only): %.5f / %.5f ', RMSE_RPE_opt, RMSE_RPE_imuonly));
+% 
+% printf('--------- \n End Euclidian Error (Opt/IMU): %.5f / %.5f', norm(p_IMUw_w_GT(:,end) -  p_IMUw_w_gtsam(:, end)) ,norm(p_IMUw_w_GT(:,end) -  p_IMUw_w_int(:, end)));
+% 
+% % Display mean errors
+% opt_errors = p_IMUw_w_GT -  p_IMUw_w_gtsam;
+% imu_errors = p_IMUw_w_GT -  p_IMUw_w_int;
+% 
+% mean_opt_euc = mean(sqrt(sum(opt_errors.^2, 1)));
+% mean_imu_euc = mean(sqrt(sum(imu_errors.^2, 1)));
+% 
+% printf('--------- \n Mean Euclidian Error (Opt/IMU): %.5f / %.5f',mean_opt_euc , mean_imu_euc);
+% 

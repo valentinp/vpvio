@@ -1,11 +1,10 @@
-function [imuData] = loadImuData(imuDataFolder, frameRange)
+function [imuData, frameRange] = loadImuData(imuDataFolder, imageTimestamps)
 % loadImageData Read captured image data into memory. Tries to load
 % individual images or a saved mat file if one exists.
     
-    frameNum = length(frameRange);
 
     %Read IMU data
-    oxtsData = loadOxtsliteData(imuDataFolder,frameRange);
+    oxtsData = loadOxtsliteData(imuDataFolder);
     % load IMU Data
     v_index = [9:11]; % FLU frame
     a_index = 12:14; % 12:14 body frame, 15:17 FLU frame
@@ -13,22 +12,24 @@ function [imuData] = loadImuData(imuDataFolder, frameRange)
 
        
     dateStrings = loadTimestamps([imuDataFolder '/oxts']);
-    dateStrings = dateStrings(frameRange);
     timestamps = zeros(1, length(dateStrings));
     for i = 1:length(dateStrings)
         timestamps(i) =  datenum_to_unixtime(datenum(dateStrings(i))) + 0.01;
     end
     
-
+    frameRange = find(timestamps > imageTimestamps(1) & timestamps < imageTimestamps(end));
+    frameNum = length(frameRange);
     imuData.timestamps = zeros(1, frameNum);
     imuData.measAccel = zeros(3, frameNum);
     imuData.measOrient = zeros(4, frameNum);
     imuData.measOmega = zeros(3,frameNum);
     imuData.initialVelocity = zeros(3,1);
+    
    
     % for all oxts packets do
-    for i=1:length(oxtsData)
+    for meas_i=1:length(frameRange)
 
+      i = frameRange(meas_i);
       % if there is no data 
       if isempty(oxtsData{i})
         continue;
@@ -38,9 +39,9 @@ function [imuData] = loadImuData(imuDataFolder, frameRange)
           imuData.initialVelocity = getRnb(oxtsData{1})'*[ oxtsData{1}(8); oxtsData{1}(7); 0; ];
       end
       
-     imuData.timestamps(1,i) = timestamps(i);
-     imuData.measAccel(:,i) =  oxtsData{i}(a_index)';
-     imuData.measOmega(:,i) = oxtsData{i}(omega_index);
+     imuData.timestamps(1,meas_i) = timestamps(i);
+     imuData.measAccel(:,meas_i) =  oxtsData{i}(a_index)';
+     imuData.measOmega(:,meas_i) = oxtsData{i}(omega_index);
 
       
       rx = oxtsData{i}(4); % roll
@@ -51,7 +52,7 @@ function [imuData] = loadImuData(imuDataFolder, frameRange)
       Rz = [cos(rz) -sin(rz) 0; sin(rz) cos(rz) 0; 0 0 1]; % base => nav  (level oxts => rotated oxts)
       R  = Rz*Ry*Rx;
 
-      imuData.measOrient(:,i) = quat_from_rotmat(R);
+      imuData.measOrient(:,meas_i) = quat_from_rotmat(R);
      
     end
     

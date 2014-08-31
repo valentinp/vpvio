@@ -30,8 +30,8 @@ currentPoseGlobal = Pose3(Rot3(rotmat_from_quat(xInit.q)), Point3(xInit.p)); % i
 currentVelocityGlobal = LieVector(xInit.v); 
 currentBias = imuBias.ConstantBias(zeros(3,1), zeros(3,1));
 sigma_init_x = noiseModel.Isotropic.Sigmas([ 0.01; 0.01; 0.01; 0.01; 0.01; 0.01 ]);
-sigma_init_v = noiseModel.Isotropic.Sigma(3, 1000.0);
-sigma_init_b = noiseModel.Isotropic.Sigmas([ 0.100; 0.100; 0.100; 5.00e-05; 5.00e-05; 5.00e-05 ]);
+sigma_init_v = noiseModel.Isotropic.Sigma(3, 0.1);
+sigma_init_b = noiseModel.Isotropic.Sigmas([noiseParams.sigma_ba * ones(3,1); noiseParams.sigma_bg * ones(3,1) ]);
 sigma_between_b = [ noiseParams.sigma_ba * ones(3,1); noiseParams.sigma_bg * ones(3,1) ];
 w_coriolis = [0;0;0];
 
@@ -219,7 +219,7 @@ for measId = measIdsTimeSorted
               %The odometry change  
               T_rimu = inv(referencePose.T_wimu_int)*T_wimu_int;
               
-              T_rcam = T_rimu*inv(T_camimu);
+              T_rcam = T_camimu*T_rimu*inv(T_camimu);
               R_rcam = T_rcam(1:3,1:3);
               p_camr_r = homo2cart(T_rcam*[0 0 0 1]');
 
@@ -278,7 +278,7 @@ for measId = measIdsTimeSorted
                       noiseParams.sigma_g.^2 * eye(3), 0 * eye(3));
         
              
-       newFactors.add(BetweenFactorConstantBias(currentBiasKey-1, currentBiasKey, imuBias.ConstantBias(zeros(3,1), zeros(3,1)), noiseModel.Diagonal.Sigmas(sqrt(10) * sigma_between_b)));
+       newFactors.add(BetweenFactorConstantBias(currentBiasKey-1, currentBiasKey, imuBias.ConstantBias(zeros(3,1), zeros(3,1)), noiseModel.Diagonal.Sigmas(sqrt(40) * sigma_between_b)));
 
     newValues.insert(currentPoseKey, currPose);
      newValues.insert(currentVelKey, currentVelocityGlobal);
@@ -318,9 +318,9 @@ for measId = measIdsTimeSorted
                 % format: fx fy skew cx cy baseline
                 K_GTSAM = Cal3_S2(f_x, f_y, 0, c_x, c_y);
                 %mono_model_n = noiseModel.Diagonal.Sigmas([0.2,0.2]');
-                mono_model_n_robust = noiseModel.Robust(noiseModel.mEstimator.Huber(2), noiseModel.Diagonal.Sigmas([0.25,0.25]'));
+                mono_model_n_robust = noiseModel.Robust(noiseModel.mEstimator.Huber(1), noiseModel.Diagonal.Sigmas([0.25,0.25]'));
                 %pointNoiseInitial = noiseModel.Robust(noiseModel.mEstimator.Huber(0.1), noiseModel.Isotropic.Sigma(3, 1)); 
-                pointNoise = noiseModel.Robust(noiseModel.mEstimator.Huber(1), noiseModel.Isotropic.Sigma(3, 2)); 
+                pointNoise = noiseModel.Robust(noiseModel.mEstimator.Huber(1), noiseModel.Isotropic.Sigma(3, 10)); 
                 
                 %====== INITIALIZATION ========
                if ~initiliazationComplete
@@ -344,21 +344,10 @@ for measId = measIdsTimeSorted
                               %Batch optimize
                         batchOptimizer = LevenbergMarquardtOptimizer(newFactors, newValues);
                         fullyOptimizedValues = batchOptimizer.optimize();
-                        batchOptimizer.error()
-                        batchOptimizer.iterations()
+                        
                         isam.update(newFactors, fullyOptimizedValues);
                         isamCurrentEstimate = isam.calculateEstimate();
                         
-                        %Calculate the average Euclidian error of
-                        %triangulization
-                        vnorms = zeros(length(matchedKeyPointIds), 1);
-                        for kpt_j = 1:length(matchedKeyPointIds)
-                            vnorms(kpt_j) = norm(triangPoints_w(:, kpt_j) - isamCurrentEstimate.at(matchedKeyPointIds(kpt_j)).vector);
-                        end
-                        mean(vnorms)
-                        max(vnorms)
-                        hist(vnorms)
-                  
                         %Reset the new values
                         newFactors = NonlinearFactorGraph;
                         newValues = Values;
@@ -383,10 +372,12 @@ for measId = measIdsTimeSorted
                          end
                     end
                
-                        
+                    %removeIndices = KeyVector();
+                    %removeIndices.push_back(1)
+                  
+                    
                    isam.update(newFactors, newValues);
                    isamCurrentEstimate = isam.calculateEstimate();
-                   delta = isam.getDelta();
 
                    %Reset the new values
                     newFactors = NonlinearFactorGraph;
@@ -398,8 +389,8 @@ for measId = measIdsTimeSorted
                
                %What is our current estimate of the state?
                if initiliazationComplete
-                %currentVelocityGlobal = isamCurrentEstimate.at(currentVelKey);
-                %currentBias = isamCurrentEstimate.at(currentBiasKey);
+                currentVelocityGlobal = isamCurrentEstimate.at(currentVelKey);
+                currentBias = isamCurrentEstimate.at(currentBiasKey);
                 currentPoseGlobal = isamCurrentEstimate.at(currentPoseKey);
                else
                 currentPoseGlobal = Pose3(T_wimu_int);   

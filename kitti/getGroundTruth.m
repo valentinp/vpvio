@@ -1,4 +1,4 @@
-function [poseMat] = getGroundTruth (base_dir)
+function [poseMat] = getGroundTruth (base_dir, imuFrames)
 % Based on KITTI RAW DATA DEVELOPMENT KIT
 % 
 % Outputs ground truth poses
@@ -13,8 +13,8 @@ oxts = loadOxtsliteData(base_dir);
 % transform to poses
 pose = convertOxtsToPose(oxts);
 
-poseMat = zeros(4,4,length(pose));
+poseMat = zeros(4,4);
 
-for i = 1:length(pose)
-    poseMat(:,:,i) = pose{i};
+for i = 1:length(imuFrames)
+    poseMat(:,:,i) = pose{imuFrames(i)};
 end

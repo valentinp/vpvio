@@ -29,7 +29,7 @@ function [T_wIMU, imuData] = genTrajectoryCircle(simSetup)
 
 
 g_w = [0; 0; -9.81];
-forwardSpeed = 0.5;  % m/s
+forwardSpeed = 2;  % m/s
 circleRadius = 10; %m
 period = 2*pi*circleRadius/forwardSpeed;
 
