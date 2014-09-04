@@ -1,4 +1,4 @@
-function [T_wcam_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAM(K, T_camimu, monoImageData, imuData, pipelineOptions, noiseParams, xInit, g_w)
+function [T_wcam_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_UseClusters(K, T_camimu, monoImageData, rgbImageData, imuData, pipelineOptions, noiseParams, xInit, g_w, clusteringModel, clusterWeights)
 %VIOPIPELINE Run the Visual Inertial Odometry Pipeline
 % K: camera intrinsics
 % T_camimu: transformation from the imu to the camera frame
@@ -99,6 +99,7 @@ pastObservations.pixels = [];
 pastObservations.poseKeys = [];
 pastObservations.triangPoints = [];
 pastObservations.ids =  [];
+pastObservations.predVectors = [];
 
 
 for measId = measIdsTimeSorted
@@ -191,6 +192,7 @@ for measId = measIdsTimeSorted
            referencePose.T_wcam_opt = T_wimu_int*inv(T_camimu);
            referencePose.allLandmarkIds = keyPointIds;
            referencePose.currImage = currImage;
+          referencePose.camMeasId = camMeasId;
 
        
                    % =========== GTSAM ============
@@ -329,6 +331,14 @@ for measId = measIdsTimeSorted
                matchedRefKeyPointsPixels = KLOldkeyPointPixels(:, inlierIdx);
                matchedKeyPointIds = keyPointIds(inlierIdx);
                
+                  %New STEP
+              %Calculate the predicition vectors
+              %=========================================
+              matchedPredVectors = computePredVectors(matchedKeyPointsPixels, rgbImageData.rectImages(:,:,:, camMeasId), [imuAccel; imuOmega]);
+              matchedRefPredVectors = computePredVectors(matchedRefKeyPointsPixels, rgbImageData.rectImages(:,:,:, referencePose.camMeasId), [imuAccel; imuOmega]);
+             %=========================================
+
+               
                printf(['--------- \n Matched ' num2str(length(inlierIdx)) ' old landmarks. ---------\n']);
 
                
@@ -425,6 +435,7 @@ for measId = measIdsTimeSorted
                %pose keys as well.
                
                
+                             
                    %Keep track of all observed landmarks
                     for kpt_j = 1:length(matchedKeyPointIds)
                         % If this is the first time, we need to add the
@@ -436,13 +447,14 @@ for measId = measIdsTimeSorted
                               pastObservations.poseKeys = [pastObservations.poseKeys (currentPoseKey-1)];
                               pastObservations.triangPoints = [pastObservations.triangPoints triangPoints_w(:,kpt_j)];
                               pastObservations.ids =  [pastObservations.ids matchedKeyPointIds(kpt_j)];
-                                     
+                              pastObservations.predVectors =  [pastObservations.predVectors matchedRefPredVectors(:, kpt_j)];
                          end
                          if ~ismember(matchedKeyPointIds(kpt_j), initializedLandmarkIds)
                               pastObservations.pixels = [pastObservations.pixels matchedKeyPointsPixels(:, kpt_j)];
                               pastObservations.poseKeys = [pastObservations.poseKeys (currentPoseKey)];
                               pastObservations.triangPoints = [pastObservations.triangPoints triangPoints_w(:,kpt_j)];
                               pastObservations.ids =  [pastObservations.ids matchedKeyPointIds(kpt_j)];
+                              pastObservations.predVectors =  [pastObservations.predVectors matchedPredVectors(:, kpt_j)];
                          end
                     end
                     
@@ -455,18 +467,27 @@ for measId = measIdsTimeSorted
                             allKptTriang = pastObservations.triangPoints(:, pastObservations.ids==kptId);
                             allKptObsPixels = pastObservations.pixels(:, pastObservations.ids==kptId);
                             allPoseKeys = pastObservations.poseKeys(:, pastObservations.ids==kptId);
+                            allPredVectors = pastObservations.predVectors(:, pastObservations.ids==kptId);
+                            
                             %Triangulate the point by taking the mean of
                             %all observations (starting from the 2nd one
                             %since we can't triangulate right away)
                             
                             kptLocEst = [mean(allKptTriang(1,2:end)); mean(allKptTriang(2,2:end)); mean(allKptTriang(3,2:end)) ];
-                            %kptLocEst = allKptTriang(:,2);
+                            %kptLocEst = allKptTriang(:,1);
                             tempValues = Values;
                             tempFactors = NonlinearFactorGraph;
                             
                             tempValues.insert(kptId, Point3(kptLocEst));
                              for obs_i = 1:size(allKptObsPixels,2)
-                                tempFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
+                                 %THE MAGIC!
+                                 %====================
+                                 predVector = allPredVectors(:, obs_i);
+                                 predWeight = getPredVectorWeight(predVector, clusteringModel, clusterWeights);
+                                 mono_model_n_predictive = noiseModel.Robust(noiseModel.mEstimator.Huber(predWeight), noiseModel.Isotropic.Sigma(2, pipelineOptions.obsNoiseSigma));
+
+                                tempFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_predictive, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
+                                 %====================
                              end
                              uniquePoseKeys = unique(allPoseKeys);
                              
@@ -486,16 +507,27 @@ for measId = measIdsTimeSorted
                                 end
 
                                 for obs_i = 1:size(allKptObsPixels,2)
-                                    newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
+                                 %THE MAGIC!
+                                 %====================
+                                 predVector = allPredVectors(:, obs_i);
+                                 predWeight = getPredVectorWeight(predVector, clusteringModel, clusterWeights);
+                                 mono_model_n_predictive = noiseModel.Robust(noiseModel.mEstimator.Huber(predWeight), noiseModel.Isotropic.Sigma(2, pipelineOptions.obsNoiseSigma));
+
+                                    newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_predictive, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
+                                %====================
                                 end
                                 newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
                              end
+
+       
+
                     end
                      
                     %Remove all added landmarks from qeueu
                     pastObservations.pixels(:,  ismember(pastObservations.ids, obsGoneOutofViewIds)) = [];
                     pastObservations.poseKeys(ismember(pastObservations.ids, obsGoneOutofViewIds)) = [];
                     pastObservations.triangPoints(:,  ismember(pastObservations.ids, obsGoneOutofViewIds)) = [];
+                    pastObservations.predVectors(:,ismember(pastObservations.ids, obsGoneOutofViewIds)) = [];
                     pastObservations.ids(ismember(pastObservations.ids, obsGoneOutofViewIds)) = [];
                     
                     %Do the hard work ISAM!
@@ -546,6 +578,7 @@ for measId = measIdsTimeSorted
                % 2. Triangulated 3D points and associated descriptor vectors
 
                keyFrames(keyFrame_i).imuMeasId = size(T_wimu_estimated, 3);
+              keyFrames(keyFrame_i).camMeasId = camMeasId;
                keyFrames(keyFrame_i).T_wimu_opt = currentPoseGlobal.matrix;
                keyFrames(keyFrame_i).T_wimu_int = T_wimu_int;
                keyFrames(keyFrame_i).T_wcam_opt = currentPoseGlobal.matrix*inv(T_camimu);

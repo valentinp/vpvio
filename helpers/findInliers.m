@@ -4,7 +4,7 @@ function [inlierIdx] = findInliers(prevPts, currPts, R_rcam, p_camr_r, pixelMeas
         
         T_camr = [R_rcam' -R_rcam'*p_camr_r; 0 0 0 1];
         
-        triangPoints_r = triangulate2(prevPts, currPts, R_rcam, p_camr_r); 
+        triangPoints_r = triangulate(prevPts, currPts, R_rcam, p_camr_r); 
         triangPoints_c = homo2cart(T_camr*cart2homo(triangPoints_r));
        
         simulatedPixels_c = homo2cart(K*triangPoints_c);
@@ -16,7 +16,6 @@ function [inlierIdx] = findInliers(prevPts, currPts, R_rcam, p_camr_r, pixelMeas
         error_vecs = simulatedPixels_c - pixelMeasurements_c;
         error_norms = sum(error_vecs.^2, 1);
        
-        %clusterIds == useOnlyCluster &
         inlierIdx = find(error_norms < pipelineOptions.inlierThreshold & abs(disparity) > pipelineOptions.inlierMinDisparity & triangPoints_r(3,:) > 0 & triangPoints_r(3,:) < pipelineOptions.inlierMaxForwardDistance);
 end
 

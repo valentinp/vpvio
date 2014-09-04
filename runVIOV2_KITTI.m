@@ -49,8 +49,8 @@ end
 %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_30';
 
-dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0002_sync';
-dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
+%dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0002_sync';
+%dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
 %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_30';
@@ -59,8 +59,8 @@ dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 %dataCalibDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26';
 
 %Train
-%dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0001_sync';
-%dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
+dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0036_sync';
+dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
 %dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0023_extract';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
@@ -72,11 +72,8 @@ dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
 
-
-
-
 %% Get ground truth and import data
-frameRange = 1:70;
+frameRange = 1:200;
 
 %Image data
 monoImageData = loadImageData([dataBaseDir '/image_00'], frameRange);
@@ -111,15 +108,23 @@ close all;
 %Pipeline
 pipelineOptions.featureCount = 1000;
 pipelineOptions.initDisparityThreshold = 1;
-pipelineOptions.kfDisparityThreshold = 5;
+pipelineOptions.kfDisparityThreshold = 10;
 pipelineOptions.showFeatureTracks = false;
 
 
-pipelineOptions.inlierThreshold = 0.75^2;
-pipelineOptions.inlierMinDisparity = 2;
-pipelineOptions.inlierMaxForwardDistance = 100;
-
+pipelineOptions.inlierThreshold = 0.5^2;
+pipelineOptions.inlierMinDisparity = 3;
+pipelineOptions.inlierMaxForwardDistance = 200;
 pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 3;
+pipelineOptions.obsNoiseSigma = 0.5;
+pipelineOptions.useRobustMEst = true;
+
+pipelineOptions.mEstWeight = 5;
+pipelineOptions.triangPointSigma = 10;
+
 
 
 xInit.p = T_wIMU_GT(1:3,4,1);
@@ -128,11 +133,10 @@ xInit.b_g = zeros(3,1);
 xInit.b_a = zeros(3,1);
 xInit.q = [1;zeros(3,1)];
 
-g_w = -1*rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.82]';
-%g_w = [0 0 -9.81]';
+g_w = -1*rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.81]';
 
-noiseParams.sigma_g = 1e-3;
-noiseParams.sigma_a = 1e-4;
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
 noiseParams.sigma_bg = 1e-5;
 noiseParams.sigma_ba = 1e-5;
 noiseParams.tau = 10^12;
@@ -141,7 +145,7 @@ noiseParams.tau = 10^12;
 %The pipeline
 [T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAM(K, T_camimu, monoImageData, imuData, pipelineOptions, noiseParams, xInit, g_w);
 
-
+%%
 % Plot the estimated values
 figure;
 p_IMUw_w_GT = zeros(3, length(keyFrames));
@@ -175,34 +179,9 @@ legend('Ground Truth', 'Integrated','GTSAM', 4)
 T_wIMU_GT_sync = T_wIMU_GT(:,:,keyFrameIdsIMU);
 T_wimu_est_sync = T_wimu_estimated(:,:, keyFrameIdsIMU);
 
-RMSE_RPE_imuonly_list = zeros(1, size(T_wIMU_GT_sync,3)-1);
-RMSE_RPE_gtsam_list =zeros(1, size(T_wIMU_GT_sync,3)-1);
+RMSE_RPE_opt = calcRelativePoseError( T_wIMU_GT_sync, T_wimu_gtsam );
+RMSE_RPE_imuonly = calcRelativePoseError( T_wIMU_GT_sync, T_wimu_est_sync );
 
-%Iterative through different step sizes
-for dstep = 1:size(T_wIMU_GT_sync,3)-1
-
-    RPE_opt =  zeros(4,4, size(T_wIMU_GT_sync,3) - dstep);
-    RPE_imuonly = RPE_opt;
-
-    for i = 1:(size(T_wIMU_GT_sync,3)-dstep)
-        RPE_opt(:,:,i) = inv(inv(T_wIMU_GT_sync(:,:,i))*T_wIMU_GT_sync(:,:,i+dstep))*inv(T_wimu_gtsam(:,:,i))*T_wimu_gtsam(:,:,i+dstep); 
-        RPE_imuonly(:,:,i) = inv(inv(T_wIMU_GT_sync(:,:,i))*T_wIMU_GT_sync(:,:,i+dstep))*inv(T_wimu_est_sync(:,:,i))*T_wimu_est_sync(:,:,i+dstep);  
-    end
-
-    %Calculate the root mean squared error of all the relative pose errors
-    RMSE_RPE_opt = 0;
-    RMSE_RPE_imuonly = 0;
-
-    for i = 1:size(RPE_opt,3)
-        RMSE_RPE_opt = RMSE_RPE_opt + norm(RPE_opt(1:3,4,i))^2;
-        RMSE_RPE_imuonly = RMSE_RPE_imuonly + norm(RPE_imuonly(1:3,4,i))^2;  
-    end
-    RMSE_RPE_imuonly_list(dstep) = sqrt(RMSE_RPE_imuonly/size(RPE_opt,3));
-    RMSE_RPE_gtsam_list(dstep) = sqrt(RMSE_RPE_opt/size(RPE_opt,3));
-end
-
-RMSE_RPE_opt = mean(RMSE_RPE_gtsam_list);
-RMSE_RPE_imuonly = mean(RMSE_RPE_imuonly_list);
 
 %Add to the title
 title(sprintf('Mean RMSE RPE (Optimized/IMU Only): %.5f / %.5f ', RMSE_RPE_opt, RMSE_RPE_imuonly));

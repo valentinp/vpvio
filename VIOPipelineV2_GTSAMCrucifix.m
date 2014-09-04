@@ -1,4 +1,4 @@
-function [T_wcam_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAM(K, T_camimu, monoImageData, imuData, pipelineOptions, noiseParams, xInit, g_w)
+function [T_wcam_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAMCrucifix(K, T_camimu, monoImageData, imuData, pipelineOptions, noiseParams, xInit, g_w)
 %VIOPIPELINE Run the Visual Inertial Odometry Pipeline
 % K: camera intrinsics
 % T_camimu: transformation from the imu to the camera frame
@@ -136,7 +136,7 @@ for measId = measIdsTimeSorted
         
         
         %Keep track of gravity
-        g_w = -1*rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.81]';
+        g_w = rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.8065]';
         
         
         %Predict the next state
@@ -522,20 +522,20 @@ for measId = measIdsTimeSorted
                 %Plot the results
                 
                 
-                if keyFrame_i ==1 
-                    trajFig = figure;
-                    trajAxes = axes();
-                    set (trajFig, 'outerposition', [25 1000, 560, 470])
-                end
-                p_wimu_w = currentPoseGlobal.translation.vector;
-                p_wimu_w_int = T_wimu_int(1:3,4);
-                 plot(trajAxes, p_wimu_w(1), p_wimu_w(2), 'g*');
-                 
-                plot(trajAxes, p_wimu_w_int(1), p_wimu_w_int(2), 'r*');
-                hold on;
-
-                drawnow;
-                pause(0.01);
+%                 if keyFrame_i ==1 
+%                     trajFig = figure;
+%                     trajAxes = axes();
+%                     set (trajFig, 'outerposition', [25 1000, 560, 470])
+%                 end
+%                 p_wimu_w = currentPoseGlobal.translation.vector;
+%                 p_wimu_w_int = T_wimu_int(1:3,4);
+%                  plot(trajAxes, p_wimu_w(1), p_wimu_w(2), 'g*');
+%                  
+%                 plot(trajAxes, p_wimu_w_int(1), p_wimu_w_int(2), 'r*');
+%                 hold on;
+% 
+%                 drawnow;
+%                 pause(0.01);
 
                disp(['Triangulated landmarks: ' num2str(size(triangPoints_w,2))])
                

@@ -5,24 +5,22 @@ clear ros.Bag;
 clear all;
 close all;
 addpath('helpers');
+addpath('gp');
 addpath('keyframe_imu');
 addpath('../MATLAB/utils');
 addpath('kitti/devkit');
 addpath('kitti');
-if ismac
-    addpath('/Users/valentinp/Research/opengv/matlab');
-    addpath('/Users/valentinp/Research/mexopencv');
-else
-    addpath('~/Dropbox/Research/Ubuntu/opengv/matlab');
-    addpath('~/mexopencv/');
-end
+addpath('training');
 
 if ismac
+    addpath('/Users/valentinp/Research/mexopencv');
     addpath('/Users/valentinp/Research/gtsam_toolbox');
 else
+    addpath('~/mexopencv/');
     addpath('~/Dropbox/Research/Ubuntu/gtsam_toolbox/');
 end
- import gtsam.*;
+
+import gtsam.*;
 
 %% Where is the data?
 %Karslrugh city centre
@@ -42,6 +40,7 @@ end
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
 %Trail through forest
+
  %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0087_sync';
  %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
@@ -49,17 +48,17 @@ end
 %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_30';
 
-dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0002_sync';
-dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
+%Train
+%dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0001_sync';
+%dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
 %dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_30';
 
-%dataBaseDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26/2011_09_26_drive_0002_sync';
-%dataCalibDir = '/Users/valentinp/Research/Datasets/Kitti/2011_09_26';
+%dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0002_sync';
+%dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
-%Train
-%dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0001_sync';
+%dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0036_sync';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
 %dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0023_extract';
@@ -68,18 +67,18 @@ dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 %dataBaseDir = '/home/valentin/Desktop/KITTI/2011_10_03/2011_10_03_drive_0042_extract';
 %dataCalibDir = '/home/valentin/Desktop/KITTI/2011_10_03';
 
-%dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0035_extract';
-%dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
-
+dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0035_extract';
+dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 
 
 
 
 %% Get ground truth and import data
-frameRange = 1:70;
+frameRange = 1:135;
 
 %Image data
 monoImageData = loadImageData([dataBaseDir '/image_00'], frameRange);
+rgbImageData = loadImageDataRGB([dataBaseDir '/image_02'], frameRange);
 
 %IMU data
 [imuData, imuFrames] = loadImuData(dataBaseDir, monoImageData.timestamps);
@@ -87,8 +86,18 @@ monoImageData = loadImageData([dataBaseDir '/image_00'], frameRange);
 T_wIMU_GT = getGroundTruth(dataBaseDir, imuFrames);
 
 %Decimate monoImageData
-monoImageData.timestamps(2:2:end) = [];
-monoImageData.rectImages(:,:,2:2:end) = [];
+% monoImageData.timestamps(2:2:end) = [];
+% monoImageData.rectImages(:,:,2:2:end) = [];
+% rgbImageData.timestamps(2:2:end) = [];
+% rgbImageData.rectImages(:,:,:,2:2:end) = [];
+
+
+%% Cluster
+numClusters = 10;
+Km = 1; %Controls how far from the mean distance each cluster threshold is
+featNum = 1000;
+[clusteringModel, inFraction] = clusterData(rgbImageData,monoImageData, imuData, numClusters, Km, featNum);
+inFraction
 
 %% Load calibration
 [T_camvelo_struct, K] = loadCalibration(dataCalibDir);
@@ -108,38 +117,73 @@ end
 %% VIO pipeline
 %Set parameters
 close all;
-%Pipeline
-pipelineOptions.featureCount = 1000;
-pipelineOptions.initDisparityThreshold = 1;
-pipelineOptions.kfDisparityThreshold = 10;
-pipelineOptions.showFeatureTracks = false;
-
-
-pipelineOptions.inlierThreshold = 1^2;
-pipelineOptions.inlierMinDisparity = 2;
-pipelineOptions.inlierMaxForwardDistance = 100;
-
-pipelineOptions.verbose = true;
-
-
 xInit.p = T_wIMU_GT(1:3,4,1);
 xInit.v = imuData.initialVelocity;
 xInit.b_g = zeros(3,1);
 xInit.b_a = zeros(3,1);
 xInit.q = [1;zeros(3,1)];
-
 g_w = -1*rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.81]';
-noiseParams.sigma_g = 1e-3;
-noiseParams.sigma_a = 0.5e-3;
-noiseParams.sigma_bg = 1e-4;
-noiseParams.sigma_ba = 1e-4;
+
+%Pipeline
+pipelineOptions.featureCount = 1000;
+pipelineOptions.initDisparityThreshold = 1;
+pipelineOptions.kfDisparityThreshold = 10;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 0.1^2;
+pipelineOptions.inlierMinDisparity = 12;
+pipelineOptions.inlierMaxForwardDistance = 100;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 2;
+pipelineOptions.obsNoiseSigma = 0.5;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 1;
+pipelineOptions.triangPointSigma = 100;
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-3*ones(3,1);
+noiseParams.sigma_bg = 1e-5;
+noiseParams.sigma_ba = 1e-5;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
 noiseParams.tau = 10^12;
 
+%% Learn the weights
  
+%The learning pipeline
+[clusterWeights] = VIOPipelineV2_LearnClusters(K, T_camimu, monoImageData, rgbImageData, imuData, pipelineOptions, noiseParams, xInit, g_w, clusteringModel, T_wIMU_GT);
+
+%% Use a Gaussian Process
+addpath('/home/valentin/Research/gpml-matlab-v3.4-2013-11-11');
+startup();
+
+%Gaussian Process
+%Training Vectors
+x = clusteringModel.centroids;
+t_train = clusterWeights;
+% %Learn the GP!
+covfunc = @covSEiso; 
+likfunc = @likGauss; 
+hyp2.cov = [0;0];    
+hyp2.lik = log(0.1);
+clusteringModel.hyp2 = minimize(hyp2, @gp, -10, @infExact, [], covfunc, likfunc, x', t_train');
+
+%Print the cluster weights
+
+clusterWeights
+
+%% Use the weights!
+
+    
+    
 %The pipeline
-[T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAM(K, T_camimu, monoImageData, imuData, pipelineOptions, noiseParams, xInit, g_w);
+[T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_UseClusters(K, T_camimu, monoImageData, rgbImageData, imuData, pipelineOptions, noiseParams, xInit, g_w, clusteringModel, clusterWeights);
 
+% What about non-weights?
+%[T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAM(K, T_camimu, monoImageData, imuData, pipelineOptions, noiseParams, xInit, g_w);
 
+% Do some analysis!
 % Plot the estimated values
 figure;
 p_IMUw_w_GT = zeros(3, length(keyFrames));
@@ -173,37 +217,14 @@ legend('Ground Truth', 'Integrated','GTSAM', 4)
 T_wIMU_GT_sync = T_wIMU_GT(:,:,keyFrameIdsIMU);
 T_wimu_est_sync = T_wimu_estimated(:,:, keyFrameIdsIMU);
 
-RMSE_RPE_imuonly_list = zeros(1, size(T_wIMU_GT_sync,3)-1);
-RMSE_RPE_gtsam_list =zeros(1, size(T_wIMU_GT_sync,3)-1);
+RMSE_RPE_opt = calcRelativePoseError( T_wIMU_GT_sync, T_wimu_gtsam );
+RMSE_RPE_imuonly = calcRelativePoseError( T_wIMU_GT_sync, T_wimu_est_sync );
 
-%Iterative through different step sizes
-for dstep = 1:size(T_wIMU_GT_sync,3)-1
-
-    RPE_opt =  zeros(4,4, size(T_wIMU_GT_sync,3) - dstep);
-    RPE_imuonly = RPE_opt;
-
-    for i = 1:(size(T_wIMU_GT_sync,3)-dstep)
-        RPE_opt(:,:,i) = inv(inv(T_wIMU_GT_sync(:,:,i))*T_wIMU_GT_sync(:,:,i+dstep))*inv(T_wimu_gtsam(:,:,i))*T_wimu_gtsam(:,:,i+dstep); 
-        RPE_imuonly(:,:,i) = inv(inv(T_wIMU_GT_sync(:,:,i))*T_wIMU_GT_sync(:,:,i+dstep))*inv(T_wimu_est_sync(:,:,i))*T_wimu_est_sync(:,:,i+dstep);  
-    end
-
-    %Calculate the root mean squared error of all the relative pose errors
-    RMSE_RPE_opt = 0;
-    RMSE_RPE_imuonly = 0;
-
-    for i = 1:size(RPE_opt,3)
-        RMSE_RPE_opt = RMSE_RPE_opt + norm(RPE_opt(1:3,4,i))^2;
-        RMSE_RPE_imuonly = RMSE_RPE_imuonly + norm(RPE_imuonly(1:3,4,i))^2;  
-    end
-    RMSE_RPE_imuonly_list(dstep) = sqrt(RMSE_RPE_imuonly/size(RPE_opt,3));
-    RMSE_RPE_gtsam_list(dstep) = sqrt(RMSE_RPE_opt/size(RPE_opt,3));
-end
-
-RMSE_RPE_opt = mean(RMSE_RPE_gtsam_list);
-RMSE_RPE_imuonly = mean(RMSE_RPE_imuonly_list);
 
 %Add to the title
 title(sprintf('Mean RMSE RPE (Optimized/IMU Only): %.5f / %.5f ', RMSE_RPE_opt, RMSE_RPE_imuonly));
+
+printf('Mean RMSE RPE (Optimized/IMU Only): %.5f / %.5f ', RMSE_RPE_opt, RMSE_RPE_imuonly);
 
 printf('--------- \n End Euclidian Error (Opt/IMU): %.5f / %.5f', norm(p_IMUw_w_GT(:,end) -  p_IMUw_w_gtsam(:, end)) ,norm(p_IMUw_w_GT(:,end) -  p_IMUw_w_int(:, end)));
 
@@ -215,3 +236,5 @@ mean_opt_euc = mean(sqrt(sum(opt_errors.^2, 1)));
 mean_imu_euc = mean(sqrt(sum(imu_errors.^2, 1)));
 
 printf('--------- \n Mean Euclidian Error (Opt/IMU): %.5f / %.5f',mean_opt_euc , mean_imu_euc);
+
+

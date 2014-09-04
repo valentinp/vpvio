@@ -1,0 +1,1 @@
+rosrun camera_calibration cameracalibrator.py --size 8x4 --square 0.04 image:=/flea3/camera/image_raw camera:=/flea3/camera --no-service-check

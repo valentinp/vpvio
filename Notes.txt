@@ -1,0 +1,184 @@
+Sept 2, 2014
+****
+****
+
+dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0002_sync';
+
+10 clusters (Km = 1)
+
+Mean RMSE RPE (Optimized/IMU Only): 0.25440 / 1.82261 
+--------- 
+ End Euclidian Error (Opt/IMU): 0.62105 / 3.12619
+--------- 
+ Mean Euclidian Error (Opt/IMU): 0.39365 / 1.18454
+
+No clusters
+Mean RMSE RPE (Optimized/IMU Only): 0.51812 / 1.82261 
+--------- 
+ End Euclidian Error (Opt/IMU): 0.91264 / 3.12619
+--------- 
+ Mean Euclidian Error (Opt/IMU): 0.43336 / 1.18454
+
+Settings:
+pipelineOptions.featureCount = 1000;
+pipelineOptions.initDisparityThreshold = 1;
+pipelineOptions.kfDisparityThreshold = 5;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 1^2;
+pipelineOptions.inlierMinDisparity = 5;
+pipelineOptions.inlierMaxForwardDistance = 300;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 3;
+pipelineOptions.obsNoiseSigma = 0.25;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 50;
+pipelineOptions.triangPointSigma = 10;
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-4;
+noiseParams.sigma_ba = 1e-4;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+
+=================================================================================
+dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0001_sync';
+
+No Clusters
+Mean RMSE RPE (Optimized/IMU Only): 0.39904 / 0.48697 
+--------- 
+ End Euclidian Error (Opt/IMU): 0.80215 / 0.97133
+--------- 
+ Mean Euclidian Error (Opt/IMU): 0.42470 / 0.50381
+
+2 Clusters (Km = 1.5)
+
+Mean RMSE RPE (Optimized/IMU Only): 0.38237 / 0.48697 
+--------- 
+ End Euclidian Error (Opt/IMU): 0.77937 / 0.97133
+--------- 
+ Mean Euclidian Error (Opt/IMU): 0.42678 / 0.50381
+
+
+%Pipeline
+pipelineOptions.featureCount = 1000;
+pipelineOptions.initDisparityThreshold = 1;
+pipelineOptions.kfDisparityThreshold = 5;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 0.1^2;
+pipelineOptions.inlierMinDisparity = 5;
+pipelineOptions.inlierMaxForwardDistance = 100;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 2;
+pipelineOptions.obsNoiseSigma = 0.25;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 10;
+pipelineOptions.triangPointSigma = 10;
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-4;
+noiseParams.sigma_ba = 1e-4;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+=================================================================================
+dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0035_extract';
+135 frames
+
+No Clusters
+Mean RMSE RPE (Optimized/IMU Only): 0.55331 / 0.77068 
+--------- 
+ End Euclidian Error (Opt/IMU): 1.03110 / 1.47381
+--------- 
+ Mean Euclidian Error (Opt/IMU): 0.38786 / 0.58799
+
+10 Clusters (Km=1)
+Mean RMSE RPE (Optimized/IMU Only): 0.48266 / 0.77068 
+--------- 
+ End Euclidian Error (Opt/IMU): 0.92507 / 1.47381
+--------- 
+ Mean Euclidian Error (Opt/IMU): 0.34017 / 0.58799
+
+
+%Pipeline
+pipelineOptions.featureCount = 1000;
+pipelineOptions.initDisparityThreshold = 1;
+pipelineOptions.kfDisparityThreshold = 10;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 0.1^2;
+pipelineOptions.inlierMinDisparity = 12;
+pipelineOptions.inlierMaxForwardDistance = 100;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 2;
+pipelineOptions.obsNoiseSigma = 0.5;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 1;
+pipelineOptions.triangPointSigma = 100;
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-3*ones(3,1);
+noiseParams.sigma_bg = 1e-5;
+noiseParams.sigma_ba = 1e-5;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+
+Sept 3, 2014
+****
+****
+dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0035_extract';
+135 frames
+
+No Clusters
+Mean RMSE RPE (Optimized/IMU Only): 0.55331 / 0.77068 
+--------- 
+ End Euclidian Error (Opt/IMU): 1.03110 / 1.47381
+--------- 
+ Mean Euclidian Error (Opt/IMU): 0.38786 / 0.58799
+
+2 Clusters (Km=1, with GP)
+Mean RMSE RPE (Optimized/IMU Only): 0.49712 / 0.77068 
+--------- 
+ End Euclidian Error (Opt/IMU): 0.81003 / 1.47381
+--------- 
+ Mean Euclidian Error (Opt/IMU): 0.32879 / 0.58799
+
+
+%Pipeline
+pipelineOptions.featureCount = 1000;
+pipelineOptions.initDisparityThreshold = 1;
+pipelineOptions.kfDisparityThreshold = 10;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 0.1^2;
+pipelineOptions.inlierMinDisparity = 12;
+pipelineOptions.inlierMaxForwardDistance = 100;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 2;
+pipelineOptions.obsNoiseSigma = 0.5;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 1;
+pipelineOptions.triangPointSigma = 100;
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-3*ones(3,1);
+noiseParams.sigma_bg = 1e-5;
+noiseParams.sigma_ba = 1e-5;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+
+

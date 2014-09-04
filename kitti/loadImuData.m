@@ -17,7 +17,7 @@ function [imuData, frameRange] = loadImuData(imuDataFolder, imageTimestamps)
         timestamps(i) =  datenum_to_unixtime(datenum(dateStrings(i))) + 0.01;
     end
     
-    frameRange = find(timestamps > imageTimestamps(1) & timestamps < imageTimestamps(end));
+    frameRange = find(timestamps > imageTimestamps(1) & timestamps < imageTimestamps(end) + 1);
     frameNum = length(frameRange);
     imuData.timestamps = zeros(1, frameNum);
     imuData.measAccel = zeros(3, frameNum);
