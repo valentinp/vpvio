@@ -94,11 +94,11 @@ dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0035_ext
 135 frames
 
 No Clusters
-Mean RMSE RPE (Optimized/IMU Only): 0.55331 / 0.77068 
+Mean RMSE RPE (Optimized/IMU Only): 0.43900 / 0.76719 
 --------- 
- End Euclidian Error (Opt/IMU): 1.03110 / 1.47381
+ End Euclidian Error (Opt/IMU): 0.63862 / 1.47381
 --------- 
- Mean Euclidian Error (Opt/IMU): 0.38786 / 0.58799
+ Mean Euclidian Error (Opt/IMU): 0.27783 / 0.57750
 
 10 Clusters (Km=1)
 Mean RMSE RPE (Optimized/IMU Only): 0.48266 / 0.77068 
@@ -180,5 +180,129 @@ noiseParams.init_ba = zeros(3,1);
 noiseParams.init_bg = zeros(3,1);
 noiseParams.tau = 10^12;
 
+Sept 7, 2014
+****
+****
+dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0036_sync';
+frameRange = 1:500;
+%Pipeline
+pipelineOptions.featureCount = 1000;
+pipelineOptions.initDisparityThreshold = 1;
+pipelineOptions.kfDisparityThreshold = 10;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 1^2;
+pipelineOptions.inlierMinDisparity = 5;
+pipelineOptions.inlierMaxForwardDistance = 100;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 4;
+pipelineOptions.obsNoiseSigma = 0.1;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 0.25;
+pipelineOptions.triangPointSigma = 10;
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-4;
+noiseParams.sigma_ba = 1e-4;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
 
 
+(10 Clusters, Km=1.5, IFTTT Model)
+
+Mean RMSE RPE (Optimized/IMU Only): 5.58411 / 47.91649 
+--------- 
+ End Euclidian Error (Opt/IMU): 13.57110 / 92.48208
+--------- 
+ Mean Euclidian Error (Opt/IMU): 2.16161 / 27.19594
+
+(No Clusters)
+
+Mean RMSE RPE (Optimized/IMU Only): 24.04375 / 47.91649 
+--------- 
+ End Euclidian Error (Opt/IMU): 46.91776 / 92.48208
+--------- 
+ Mean Euclidian Error (Opt/IMU): 8.34715 / 27.19594
+
+Sept 10, 2014
+****
+dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0117_sync';
+======================================
+
+frames= 1:600
+%Pipeline
+pipelineOptions.featureCount = 1000;
+pipelineOptions.initDisparityThreshold = 1;
+pipelineOptions.kfDisparityThreshold = 5;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 1.5^2;
+pipelineOptions.inlierMinDisparity = 3;
+pipelineOptions.inlierMaxForwardDistance = 200;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 5;
+pipelineOptions.obsNoiseSigma = 0.1;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 0.1;
+pipelineOptions.triangPointSigma = 10;
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-4;
+noiseParams.sigma_ba = 1e-4;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+No Clusters
+
+Mean RMSE RPE (Optimized/IMU Only): 13.75723 / 144.25095 
+--------- 
+ End Euclidian Error (Opt/IMU): 29.78652 / 284.19846
+--------- 
+ Mean Euclidian Error (Opt/IMU): 6.07699 / 75.49504
+
+
+=======
+dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0034_sync';
+TOUGH: CANT TRACK LANDMARKS FOR VERY LONG :(
+
+Sept 11, 2014
+****
+dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
+frameRange = 1:500;
+======================================
+%Pipeline
+pipelineOptions.featureCount = 5000;
+pipelineOptions.initDisparityThreshold = 1;
+pipelineOptions.kfDisparityThreshold = 5;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 0.25^2;
+pipelineOptions.inlierMinDisparity = 2;
+pipelineOptions.inlierMaxForwardDistance = 100;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 3;
+pipelineOptions.obsNoiseSigma = 0.1;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 0.5;
+pipelineOptions.triangPointSigma = 3;
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-4;
+noiseParams.sigma_ba = 1e-4;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+Mean RMSE RPE (Optimized/IMU Only): 5.26240 / 11.23871 
+--------- 
+ End Euclidian Error (Opt/IMU): 7.04536 / 23.02101
+--------- 
+ Mean Euclidian Error (Opt/IMU): 4.14467 / 5.15870

@@ -1,34 +1,19 @@
-function [clusterWeights] = VIOPipelineV2_LearnClusters(K, T_camimu, monoImageData, rgbImageData, imuData, pipelineOptions, noiseParams, xInit, g_w, clusteringModel, T_wIMU_GT)
-%VIOPIPELINE Run the Visual Inertial Odometry Pipeline
-% K: camera intrinsics
-% T_camimu: transformation from the imu to the camera frame
-% imuData: struct with IMU data:
-%           imuData.timestamps: 1xN 
-%           imuData.measAccel: 3xN
-%           imuData.measOmega: 3xN
-%           imuData.measOrient: 4xN (quaternion q_sw, with scalar in the
-%           1st position. The world frame is defined as the N-E-Down ref.
-%           frame.
-% monoImageData:
-%           monoImageData.timestamps: 1xM
-%           monoImageData.rectImages: WxHxM
-% params:
-%           params.INIT_DISPARITY_THRESHOLD
-%           params.KF_DISPARITY_THRESHOLD
-%           params.MIN_FEATURE_MATCHES
+function [learnedPredSpace] = VIOPipelineV2_LearnRandomSubsets(K, T_camimu, monoImageData, rgbImageData, imuData, pipelineOptions, noiseParams, xInit, g_w, numSubsets, T_wIMU_GT)
 
 % Import opencv
 import cv.*;
 import gtsam.*;
 
-%% Loop through different clusters, use only the observations within the cluster to learn weights 
-clusterWeights = [];
-for cluster_i = 1:clusteringModel.clusterNum
+%% Loop through different subsets, use only the observations within the subset to learn weights 
+learnedPredSpace.predVectors = [];
+learnedPredSpace.weights = [];
+
+for subset_i = 1:numSubsets
     
-printf('Learning weights for cluster %d.', cluster_i);
+printf('Learning weights for subset %d.', subset_i);
+usedPredVectors = [];
 totalUsedObservations = 0;
 totalObservations = 0;
-totalObservationsNoCluster = 0;
 
 %===GTSAM INITIALIATION====%
 currentPoseGlobal = Pose3(Rot3(rotmat_from_quat(xInit.q)), Point3(xInit.p)); % initial pose is the reference frame (navigation frame)
@@ -108,6 +93,7 @@ pastObservations.poseKeys = [];
 pastObservations.triangPoints = [];
 pastObservations.ids =  [];
 pastObservations.clusterIds = [];
+pastObservations.predVectors = [];
 
 
 for measId = measIdsTimeSorted
@@ -271,13 +257,11 @@ for measId = measIdsTimeSorted
            %Calculate disparity between the current frame the last keyFramePose
            %disparityMeasure = calcDisparity(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, K);
           disparityMeasure = calcDisparity(KLOldkeyPointPixels, KLNewkeyPointPixels);
-%           disp(['Disparity Measure: ' num2str(disparityMeasure)]);
            
            
           if (~initiliazationComplete && disparityMeasure > pipelineOptions.initDisparityThreshold)  || (initiliazationComplete && disparityMeasure > pipelineOptions.kfDisparityThreshold) %(~initiliazationComplete && norm(p_camr_r) > 1) || (initiliazationComplete && norm(p_camr_r) > 1) %(disparityMeasure > INIT_DISPARITY_THRESHOLD) 
 
               
-%                    disp(['Creating new keyframe: ' num2str(keyFrame_i)]);   
 
                      %=========== GTSAM ===========
         
@@ -321,9 +305,8 @@ for measId = measIdsTimeSorted
               inlierIdx2 = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
               
               %inlierIdx = intersect(inlierIdx1, inlierIdx2);
+              
               inlierIdx = inlierIdx2;
-
-              %matchedRelFeatures = matchedRelFeatures(inlierIdx, :); 
               matchedReferenceUnitVectors = matchedReferenceUnitVectors(:, inlierIdx);
               matchedCurrentUnitVectors = matchedCurrentUnitVectors(:, inlierIdx);
                
@@ -342,9 +325,6 @@ for measId = measIdsTimeSorted
               %=========================================
               matchedPredVectors = computePredVectors(matchedKeyPointsPixels, rgbImageData.rectImages(:,:,:, camMeasId), [imuAccel; imuOmega]);
               matchedRefPredVectors = computePredVectors(matchedRefKeyPointsPixels, rgbImageData.rectImages(:,:,:, referencePose.camMeasId), [imuAccel; imuOmega]);
-              
-              matchedClusterIds = getClusterIds(matchedPredVectors, clusteringModel);
-              matchedRefClusterIds = getClusterIds(matchedRefPredVectors, clusteringModel);
               %=========================================
 
                
@@ -455,20 +435,32 @@ for measId = measIdsTimeSorted
                               pastObservations.poseKeys = [pastObservations.poseKeys (currentPoseKey-1)];
                               pastObservations.triangPoints = [pastObservations.triangPoints triangPoints_w(:,kpt_j)];
                               pastObservations.ids =  [pastObservations.ids matchedKeyPointIds(kpt_j)];
-                              pastObservations.clusterIds =  [pastObservations.clusterIds matchedRefClusterIds(kpt_j)];
+                              pastObservations.predVectors =  [pastObservations.predVectors matchedRefPredVectors(:, kpt_j)];
 
                          end
                          if ~ismember(matchedKeyPointIds(kpt_j), initializedLandmarkIds)
                               pastObservations.pixels = [pastObservations.pixels matchedKeyPointsPixels(:, kpt_j)];
                               pastObservations.poseKeys = [pastObservations.poseKeys (currentPoseKey)];
                               pastObservations.triangPoints = [pastObservations.triangPoints triangPoints_w(:,kpt_j)];
-                              pastObservations.clusterIds =  [pastObservations.clusterIds matchedClusterIds(kpt_j)];
                               pastObservations.ids =  [pastObservations.ids matchedKeyPointIds(kpt_j)];
+                              pastObservations.predVectors =  [pastObservations.predVectors matchedPredVectors(:, kpt_j)];
                          end
                     end
                     
                     obsGoneOutofViewIds = setdiff(pastObservations.ids, matchedKeyPointIds);
-%                          printf('%d landmarks gone out of view. Inserting into filter.', length(obsGoneOutofViewIds));
+                    
+                   %SUBSET SELECTION
+                  %=========================================
+                   if length(obsGoneOutofViewIds) > numSubsets
+                    subsetIdx = round((((subset_i-1)*length(obsGoneOutofViewIds)/numSubsets +1):subset_i*length(obsGoneOutofViewIds)/numSubsets));
+                                  
+                    totalObservations = totalObservations + length(obsGoneOutofViewIds);
+                    totalUsedObservations = totalUsedObservations + length(subsetIdx);
+                    
+                    obsGoneOutofViewIds = obsGoneOutofViewIds(subsetIdx);
+                   end
+                  %=========================================
+                    
                     
                     %Add all landmarks that have gone out of view
                     for id = 1:length(obsGoneOutofViewIds)
@@ -476,16 +468,15 @@ for measId = measIdsTimeSorted
                             allKptTriang = pastObservations.triangPoints(:, pastObservations.ids==kptId);
                             allKptObsPixels = pastObservations.pixels(:, pastObservations.ids==kptId);
                             allPoseKeys = pastObservations.poseKeys(:, pastObservations.ids==kptId);
-                            allClusterIds = pastObservations.clusterIds(pastObservations.ids==kptId);
-                            
+                            allPredVectors = pastObservations.predVectors(:, pastObservations.ids==kptId);
+            
+                            %SUBSET PRED VECTOR SELECTION
+                            %=========================================
+                            usedPredVectors = [usedPredVectors allPredVectors];
+                            %=========================================
+
                             %Make sure we have at least 2 observations that
                             %fall into our current cluster
-                            totalObservations = totalObservations + size(allKptObsPixels,2);
-                            totalUsedObservations = totalUsedObservations + length(allClusterIds(allClusterIds == cluster_i));
-                            totalObservationsNoCluster = totalObservationsNoCluster + sum(allClusterIds == 0);
-                            
-                            if length(allClusterIds(allClusterIds == cluster_i)) > 1
-                            
                             %Triangulate the point by taking the mean of
                             %all observations (starting from the 2nd one
                             %since we can't triangulate right away)
@@ -497,9 +488,7 @@ for measId = measIdsTimeSorted
                             
                             tempValues.insert(kptId, Point3(kptLocEst));
                              for obs_i = 1:size(allKptObsPixels,2)
-                                 if allClusterIds(obs_i) == cluster_i
                                     tempFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
-                                 end
                              end
                              uniquePoseKeys = unique(allPoseKeys);
                              
@@ -519,21 +508,19 @@ for measId = measIdsTimeSorted
                                 end
                                 
                                  for obs_i = 1:size(allKptObsPixels,2)
-                                    if allClusterIds(obs_i) == cluster_i
                                         newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
-                                    end
                                  end
                                 newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
                                end
-                            end %if length(allClusterIds(allClusterIds == cluster_i)) > 1
                     end
                      
                     %Remove all added landmarks from qeueu
                     pastObservations.pixels(:,  ismember(pastObservations.ids, obsGoneOutofViewIds)) = [];
                     pastObservations.poseKeys(ismember(pastObservations.ids, obsGoneOutofViewIds)) = [];
                     pastObservations.triangPoints(:,  ismember(pastObservations.ids, obsGoneOutofViewIds)) = [];
-                    pastObservations.clusterIds(ismember(pastObservations.ids, obsGoneOutofViewIds)) = [];
                     pastObservations.ids(ismember(pastObservations.ids, obsGoneOutofViewIds)) = [];
+                    pastObservations.predVectors(:,ismember(pastObservations.ids, obsGoneOutofViewIds)) = [];
+
                     
                     %Do the hard work ISAM!
                     isam.update(newFactors, newValues);
@@ -581,7 +568,6 @@ for measId = measIdsTimeSorted
                referencePose = keyFrames(keyFrame_i);
 
                keyFrame_i = keyFrame_i + 1;
-
                
            end %if meanDisparity
            
@@ -607,9 +593,13 @@ rpe_int = calcRelativePoseError(T_wIMU_GT_sync, T_wimu_int_sync);
 
 rpe_normalized = rpe_gtsam/rpe_int;
 
-clusterWeights(cluster_i) = 4/(1+rpe_normalized^2)^2;
-printf('Total Obs: %d. Total Used Obs: %d. Total Obs No Cluster: %d Percent Used: %.1f', totalObservations, totalUsedObservations, totalObservationsNoCluster, totalUsedObservations/totalObservations*100.0);
-printf('Learned cluster %d. RPE IMU: %f. RPE GTSAM: %f. Weight: %f. \n=============', cluster_i,rpe_int,rpe_gtsam, clusterWeights(cluster_i));
+%Update the prediction space learning
+subsetWeight = 4/(1+rpe_normalized^2)^2;
+learnedPredSpace.predVectors = [learnedPredSpace.predVectors usedPredVectors];
+learnedPredSpace.weights = [learnedPredSpace.weights subsetWeight*ones(1, size(usedPredVectors,2))];
+
+printf('Total Obs: %d. Total Used Obs: %d. Percent Used: %.1f', totalObservations, totalUsedObservations, totalUsedObservations/totalObservations*100.0);
+printf('Learned subset %d. RPE IMU: %f. RPE GTSAM: %f. Weight: %f. \n=============', subset_i,rpe_int,rpe_gtsam, subsetWeight);
 
 end %for cluster_i
 

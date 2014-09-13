@@ -13,7 +13,7 @@ function [meanDisp] = calcDisparity(prevPix, currPix)
         %simulatedPixels_c = invK*currPts.*repmat(1./currPts(3,:), [3 1]);
         %simulatedPixels_r = invK*prevPts.*repmat(1./prevPts(3,:), [3 1]);
         
-        disparity = abs(prevPix(1,:) - currPix(1,:));
+        disparity = sqrt(abs(prevPix(1,:) - currPix(1,:)).^2 + abs(prevPix(2,:) - currPix(2,:)).^2);
         meanDisp = median(disparity);
     
 end

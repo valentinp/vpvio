@@ -8,7 +8,7 @@ close all;
 
 % Load a bag and get information about it
 % Using load() lets you auto-complete filepaths.
-rosBagFileName = '2014-09-03-18-50-19.bag';
+rosBagFileName = '2014-09-05-20-43-59.bag';
 bag = ros.Bag.load(rosBagFileName);
 bag.info()
 % Read all messages 
@@ -34,18 +34,23 @@ g_w = rotmat_from_quat(imuData.measOrient(:,i))'*[0 0 g_norm]';
 measAccel(:,i) = imuData.measAccel(:,i) + g_w;
 end
 
-plot(measAccel(1,:));
 
+
+plot(measAccel(1,:));
+title('X-Axis Accel');
 
 figure
 plot(measAccel(2,:));
+title('Y-Axis Accel');
+
 
 figure
 plot(measAccel(3,:));
+title('Z-Axis Accel');
 
 
-[mean(measAccel(1,:));mean(measAccel(2,:));mean(measAccel(3,:));]
-[mean(imuData.measOmega(1,:));mean(imuData.measOmega(2,:));mean(imuData.measOmega(3,:));]
+mean_a_bias = [mean(measAccel(1,:));mean(measAccel(2,:));mean(measAccel(3,:));]
+mean_g_bias = [mean(imuData.measOmega(1,:));mean(imuData.measOmega(2,:));mean(imuData.measOmega(3,:));]
 
 
 

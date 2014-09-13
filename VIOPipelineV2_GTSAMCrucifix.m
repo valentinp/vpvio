@@ -29,7 +29,7 @@ currentBias = imuBias.ConstantBias(noiseParams.init_ba, noiseParams.init_bg);
 sigma_init_x = noiseModel.Isotropic.Sigmas([ 0.01; 0.01; 0.01; 0.01; 0.01; 0.01 ]);
 sigma_init_v = noiseModel.Isotropic.Sigma(3, 0.0000001);
 sigma_init_b = noiseModel.Isotropic.Sigmas([zeros(3,1); zeros(3,1) ]);
-sigma_between_b = [ noiseParams.sigma_ba * ones(3,1); noiseParams.sigma_bg * ones(3,1) ];
+sigma_between_b = [ noiseParams.sigma_ba; noiseParams.sigma_bg ];
 w_coriolis = [0;0;0];
 % Solver object
 isamParams = ISAM2Params;
@@ -101,6 +101,7 @@ pastObservations.triangPoints = [];
 pastObservations.ids =  [];
 
 
+
 for measId = measIdsTimeSorted
     % Which type of measurement is this?
     if measId > numImageMeasurements
@@ -136,7 +137,7 @@ for measId = measIdsTimeSorted
         
         
         %Keep track of gravity
-        g_w = rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.8065]';
+        %g_w = rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 pipelineOptions.g_norm]';
         
         
         %Predict the next state
@@ -183,6 +184,9 @@ for measId = measIdsTimeSorted
         keyPoints = keyPoints.selectStrongest(pipelineOptions.featureCount);
         keyPointPixels = keyPoints.Location(:,:)';
         keyPointIds = camMeasId*largeInt + [1:size(keyPointPixels,2)];
+        
+        
+     
         
        %Save data into the referencePose struct
            referencePose.allKeyPointPixels = keyPointPixels;
@@ -232,15 +236,14 @@ for measId = measIdsTimeSorted
               
             
             %Use KL-tracker to find locations of new points
-            KLOldKeyPoints = num2cell(double(referencePose.allKeyPointPixels'), 2)';
+           KLOldKeyPoints = num2cell(double(referencePose.allKeyPointPixels'), 2)';
             keyPointIds = referencePose.allLandmarkIds;
 
-            [KLNewKeyPoints, status, ~] = cv.calcOpticalFlowPyrLK(uint8(referencePose.currImage), uint8(currImage), KLOldKeyPoints);
-            
+           [KLNewKeyPoints, status, ~] = cv.calcOpticalFlowPyrLK(uint8(referencePose.currImage), uint8(currImage), KLOldKeyPoints);
             
             KLOldkeyPointPixels = cell2mat(KLOldKeyPoints(:))';
             KLNewkeyPointPixels = cell2mat(KLNewKeyPoints(:))';
-           
+            
             % Remove any points that have negative coordinates
             negCoordIdx = KLNewkeyPointPixels(1,:) < 0 | KLNewkeyPointPixels(2,:) < 0;
             badIdx = negCoordIdx | (status == 0)';
@@ -311,6 +314,11 @@ for measId = measIdsTimeSorted
               
               %[~, ~, inlierIdx1] = frame2frameRANSAC(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam);
               inlierIdx2 = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
+              
+              %[~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity', 'MaxDistance', 5);
+              %triangPoints_r = triangulate(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r); 
+              
+             % inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')' & triangPoints_r(3,:) > 0 & triangPoints_r(3,:) < pipelineOptions.inlierMaxForwardDistance);
               
               %inlierIdx = intersect(inlierIdx1, inlierIdx2);
               inlierIdx = inlierIdx2;
@@ -522,20 +530,20 @@ for measId = measIdsTimeSorted
                 %Plot the results
                 
                 
-%                 if keyFrame_i ==1 
-%                     trajFig = figure;
-%                     trajAxes = axes();
-%                     set (trajFig, 'outerposition', [25 1000, 560, 470])
-%                 end
-%                 p_wimu_w = currentPoseGlobal.translation.vector;
-%                 p_wimu_w_int = T_wimu_int(1:3,4);
-%                  plot(trajAxes, p_wimu_w(1), p_wimu_w(2), 'g*');
-%                  
-%                 plot(trajAxes, p_wimu_w_int(1), p_wimu_w_int(2), 'r*');
-%                 hold on;
-% 
-%                 drawnow;
-%                 pause(0.01);
+                if keyFrame_i ==1 
+                    trajFig = figure;
+                    trajAxes = axes();
+                    set (trajFig, 'outerposition', [25 1000, 560, 470])
+                end
+                p_wimu_w = currentPoseGlobal.translation.vector;
+                p_wimu_w_int = T_wimu_int(1:3,4);
+                 plot(trajAxes, p_wimu_w(1), p_wimu_w(2), 'g*');
+                 
+                plot(trajAxes, p_wimu_w_int(1), p_wimu_w_int(2), 'r*');
+                hold on;
+
+                drawnow;
+                pause(0.01);
 
                disp(['Triangulated landmarks: ' num2str(size(triangPoints_w,2))])
                
@@ -560,10 +568,6 @@ for measId = measIdsTimeSorted
                referencePose = keyFrames(keyFrame_i);
 
                keyFrame_i = keyFrame_i + 1;
-                
-
-                   
-               
            end %if meanDisparity
            
            

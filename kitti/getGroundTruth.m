@@ -16,5 +16,8 @@ pose = convertOxtsToPose(oxts);
 poseMat = zeros(4,4);
 
 for i = 1:length(imuFrames)
-    poseMat(:,:,i) = pose{imuFrames(i)};
+    if i == 1
+        firstPose = pose{imuFrames(i)};
+    end
+    poseMat(:,:,i) = inv(firstPose)*pose{imuFrames(i)};
 end

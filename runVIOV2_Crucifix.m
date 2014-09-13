@@ -21,14 +21,14 @@ end
 
 import gtsam.*;
 %% Parameters
-rosBagFileName = '/home/valentin/Desktop/Crucifix/2014-09-03-20-25-07.bag';
+rosBagFileName = '/home/valentin/Desktop/Crucifix/2014-09-12-15-25-27.bag';
 imuTopic = '/microstrain/imu/data';
 flea3Topic = '/flea3/camera/image_rect';
 
 imageSize = [1280 960];
 %Intrinsics
-K = [908.668001 0.000000 623.985786;
-0.000000 906.831674 490.395468;
+K = [900.940738 0.000000 624.980453;
+0.000000 898.971878 490.705403;
 0.000000 0.000000 1.000000];
 
 T_camimu = [-0.99988155  0.01287993 -0.00842556 -0.03879945;
@@ -51,13 +51,14 @@ monoImageData = {};
 imuData = {};
 
 %% Process images 
-monoImageData.rectImages =zeros(imageSize(2), imageSize(1), length(bagImageData));
-monoImageData.timestamps = zeros(1, length(bagImageData));
-for i=1:length(bagImageData)
+monoImageData.rectImages = [];
+monoImageData.timestamps = zeros(1, 500);
+for i=1:500%length(bagImageData)
     monoImageData.rectImages(:,:,i) = reshape(bagImageData{i}.data, imageSize(1), imageSize(2))';
     monoImageData.timestamps(i) = bagImageData{i}.header.stamp.time;
+    i
 end
-%clear bagImageData;
+clear bagImageData;
 
 %% Process imu data
 % imuData: struct with IMU data:
@@ -102,38 +103,39 @@ xInit.p = zeros(3,1);
 xInit.v = zeros(3,1);
 xInit.b_g = zeros(3,1);
 xInit.b_a = zeros(3,1);
-xInit.q = [1;zeros(3,1)];
-g_w = rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.8065]';
+xInit.q = imuData.measOrient(:,1);
 
 %Pipeline
 pipelineOptions.featureCount = 1000;
-pipelineOptions.initDisparityThreshold = 1;
-pipelineOptions.kfDisparityThreshold = 3;
+pipelineOptions.initDisparityThreshold = 5;
+pipelineOptions.kfDisparityThreshold = 10;
 pipelineOptions.showFeatureTracks = true;
 pipelineOptions.inlierThreshold = 0.5^2;
-pipelineOptions.inlierMinDisparity = 1;
-pipelineOptions.inlierMaxForwardDistance = 10;
+pipelineOptions.inlierMinDisparity = 2;
+pipelineOptions.inlierMaxForwardDistance = 20;
 pipelineOptions.verbose = true;
+pipelineOptions.g_norm = 9.8093;
+
+g_w = [0 0 pipelineOptions.g_norm]';
 
 %GTSAM
 pipelineOptions.minViewingsForLandmark = 2;
-pipelineOptions.obsNoiseSigma = 0.25;
+pipelineOptions.obsNoiseSigma = 0.1;
 pipelineOptions.useRobustMEst = true;
-pipelineOptions.mEstWeight = 20;
-pipelineOptions.triangPointSigma = 1;
+pipelineOptions.mEstWeight = 1;
+pipelineOptions.triangPointSigma = 10;
 
-noiseParams.sigma_g = 0.000523599*ones(3,1); 
-noiseParams.sigma_a =  0.0007848*ones(3,1);
-noiseParams.sigma_bg = 1e-5;
-noiseParams.sigma_ba = 1e-5;
-noiseParams.init_ba = [-0.0025827; 0.0030936; 0.00085802;];
-noiseParams.init_bg = [0.0010218; 0.00079806; 0.00153];
-noiseParams.tau = 10^12;
+noiseParams.sigma_g = 0.001*ones(3,1); 
+noiseParams.sigma_a =  0.01*ones(3,1);
+noiseParams.sigma_bg = [1e-5; 1e-5; 1e-5];
+noiseParams.sigma_ba = [1e-5; 1e-5; 1e-5];
+noiseParams.init_ba = [0.000169839585484; -0.000181405835863; -0.001097839079856];
+noiseParams.init_bg = [0.0001; 0.0001; 0.0001];
 
 %The pipeline
 [T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAMCrucifix(K, T_camimu, monoImageData, imuData, pipelineOptions, noiseParams, xInit, g_w);
 
-%%
+%
 
 % Plot the estimated values
 figure;

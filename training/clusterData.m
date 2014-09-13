@@ -21,7 +21,53 @@ for i = 1:size(monoImageData.rectImages, 3)
     allPredVectors = [allPredVectors predVectors];
 end
 
+figure;
+subplot(4,3,1)
+hist(allPredVectors(1,:))
+title('u')
+subplot(4,3,2)
+hist(allPredVectors(2,:))
+title('v')
+subplot(4,3,3)
+hist(allPredVectors(3,:))
+title('h')
+subplot(4,3,4)
+hist(allPredVectors(4,:))
+title('s')
+subplot(4,3,5)
+hist(allPredVectors(5,:))
+title('v')
+subplot(4,3,6)
+hist(allPredVectors(6,:))
+title('x contrast')
+subplot(4,3,7)
+hist(allPredVectors(7,:))
+title('y contrast')
+subplot(4,3,8)
+hist(allPredVectors(8,:))
+title('entropy')
+subplot(4,3,9)
+hist(allPredVectors(9,:))
+title('mag(accel)')
+subplot(4,3,10)
+hist(allPredVectors(10,:))
+title('mag(omega)')
+subplot(4,3,11)
+hist(allPredVectors(11,:))
+title('point density')
+subplot(4,3,12)
+hist(allPredVectors(12,:))
+title('blur metric')
+
+%[C, ptsC, centres] = dbscan(allPredVectors, 10, 100)
+
 [idx, C,~,D] = kmeans(allPredVectors', numClusters);
+
+
+[COEFF,SCORE, latent] = princomp(allPredVectors');
+latent
+COEFF
+
 
 %Determine the mean distance of points within a cluster to the cluster's centroid
 %This sets boundaries

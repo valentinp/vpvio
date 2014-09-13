@@ -174,7 +174,7 @@ for measId = measIdsTimeSorted
              
        %If it's the first camera measurements, we're done. Otherwise
        %continue with pipeline
-       largeInt = 10000;
+       largeInt = 100000;
         if firstImageProcessed == false
        
        firstImageProcessed = true;
@@ -230,14 +230,23 @@ for measId = measIdsTimeSorted
               R_rcam = T_rcam(1:3,1:3);
               p_camr_r = homo2cart(T_rcam*[0 0 0 1]');
               
-            
+
+%              currkeyPoints = detectFASTFeatures(mat2gray(currImage));
+%              currkeyPoints = currkeyPoints.selectStrongest(pipelineOptions.featureCount);
+%              currkeyPointPixels = currkeyPoints.Location(:,:)';
+%              
+%              [refFeatures, oldValidPoints] = extractFeatures(referencePose.currImage, referencePose.allKeyPointPixels');
+%               [currFeatures, newValidPoints] = extractFeatures(currImage, currkeyPointPixels');
+%               indexPairs = matchFeatures(refFeatures, currFeatures);
+%               KLOldkeyPointPixels = double(oldValidPoints(indexPairs(:, 1), :)');
+%                 KLNewkeyPointPixels = double(newValidPoints(indexPairs(:, 2), :)');
+              
+              
+              
             %Use KL-tracker to find locations of new points
             KLOldKeyPoints = num2cell(double(referencePose.allKeyPointPixels'), 2)';
             keyPointIds = referencePose.allLandmarkIds;
-
             [KLNewKeyPoints, status, ~] = cv.calcOpticalFlowPyrLK(uint8(referencePose.currImage), uint8(currImage), KLOldKeyPoints);
-            
-            
             KLOldkeyPointPixels = cell2mat(KLOldKeyPoints(:))';
             KLNewkeyPointPixels = cell2mat(KLNewKeyPoints(:))';
            
@@ -308,7 +317,12 @@ for measId = measIdsTimeSorted
                %Feature descriptors 
                %matchedRelFeatures = referencePose.allkeyPointFeatures(matchedRelIndices(:,1), :);
                 
-              
+%               [~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity', 'MaxDistance', 1);
+%               triangPoints_r = triangulate(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r); 
+%               
+%               inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')' & triangPoints_r(3,:) > 0 & triangPoints_r(3,:) < pipelineOptions.inlierMaxForwardDistance);
+%         
+             
               %[~, ~, inlierIdx1] = frame2frameRANSAC(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam);
               inlierIdx2 = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
               

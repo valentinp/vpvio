@@ -171,7 +171,9 @@ numSubsets = 10;
 %[clusterWeights] = VIOPipelineV2_LearnClusters(K, T_camimu, monoImageData, rgbImageData, imuData, pipelineOptions, noiseParams, xInit, g_w, clusteringModel, T_wIMU_GT);
 [clusterWeights] = VIOPipelineV2_LearnRandomSubsets(K, T_camimu, monoImageData, rgbImageData, imuData, pipelineOptions, noiseParams, xInit, g_w, numSubsets, T_wIMU_GT);
 
+%%
 predVectorSpace = clusterWeights;
+searcherObject = ExhaustiveSearcher(predVectorSpace.predVectors');
 
 
 % %% Use a Gaussian Process

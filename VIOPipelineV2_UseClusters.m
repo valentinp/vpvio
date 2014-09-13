@@ -357,6 +357,12 @@ for measId = measIdsTimeSorted
                %Show feature tracks if requested
                if keyFrame_i > 0 && pipelineOptions.showFeatureTracks
                     showMatchedFeatures(referencePose.currImage,currImage, matchedRefKeyPointsPixels', matchedKeyPointsPixels');
+                    clusterIds = getClusterIds(matchedPredVectors, clusteringModel);
+                    
+                    colourRings = {'mo', 'co', 'ko'};
+                    for c_n = 1:length(pipelineOptions.showClusterIdNums)
+                        plot(matchedKeyPointsPixels(1, clusterIds == pipelineOptions.showClusterIdNums(c_n)), matchedKeyPointsPixels(2, clusterIds == pipelineOptions.showClusterIdNums(c_n)), colourRings{c_n} ,'MarkerSize',10);
+                    end
                     drawnow;
                     pause(0.01);
                end
@@ -483,7 +489,7 @@ for measId = measIdsTimeSorted
                                  %THE MAGIC!
                                  %====================
                                  predVector = allPredVectors(:, obs_i);
-                                 predWeight = getPredVectorWeight(predVector, clusteringModel, clusterWeights);
+                                 predWeight = getPredVectorWeight(predVector, clusteringModel, clusterWeights, pipelineOptions);
                                  mono_model_n_predictive = noiseModel.Robust(noiseModel.mEstimator.Huber(predWeight), noiseModel.Isotropic.Sigma(2, pipelineOptions.obsNoiseSigma));
 
                                 tempFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_predictive, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
@@ -510,7 +516,7 @@ for measId = measIdsTimeSorted
                                  %THE MAGIC!
                                  %====================
                                  predVector = allPredVectors(:, obs_i);
-                                 predWeight = getPredVectorWeight(predVector, clusteringModel, clusterWeights);
+                                 predWeight = getPredVectorWeight(predVector, clusteringModel, clusterWeights, pipelineOptions);
                                  mono_model_n_predictive = noiseModel.Robust(noiseModel.mEstimator.Huber(predWeight), noiseModel.Isotropic.Sigma(2, pipelineOptions.obsNoiseSigma));
 
                                     newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_predictive, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));

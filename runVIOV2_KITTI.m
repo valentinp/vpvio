@@ -139,6 +139,8 @@ noiseParams.sigma_g = 1e-3*ones(3,1);
 noiseParams.sigma_a =  1e-2*ones(3,1);
 noiseParams.sigma_bg = 1e-5;
 noiseParams.sigma_ba = 1e-5;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
 noiseParams.tau = 10^12;
 
  

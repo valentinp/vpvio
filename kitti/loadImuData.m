@@ -35,8 +35,8 @@ function [imuData, frameRange] = loadImuData(imuDataFolder, imageTimestamps)
         continue;
       end
       
-      if i == 1
-          imuData.initialVelocity = getRnb(oxtsData{1})'*[ oxtsData{1}(8); oxtsData{1}(7); 0; ];
+      if meas_i == 1
+          imuData.initialVelocity = getRnb(oxtsData{i})'*[ oxtsData{i}(8); oxtsData{i}(7); 0; ];
       end
       
      imuData.timestamps(1,meas_i) = timestamps(i);
