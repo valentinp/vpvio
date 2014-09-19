@@ -306,3 +306,433 @@ Mean RMSE RPE (Optimized/IMU Only): 5.26240 / 11.23871
  End Euclidian Error (Opt/IMU): 7.04536 / 23.02101
 --------- 
  Mean Euclidian Error (Opt/IMU): 4.14467 / 5.15870
+
+
+
+
+Sept 14, 2014
+******
+%Turn
+dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
+dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_30';
+
+(With full IMU data from extract version)
+
+%Pipeline
+pipelineOptions.featureCount = 10;
+pipelineOptions.initDisparityThreshold = 1;
+pipelineOptions.kfDisparityThreshold = 5;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 1^2;
+pipelineOptions.inlierMinDisparity = 1;
+pipelineOptions.inlierMaxForwardDistance = 25;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 3;
+pipelineOptions.obsNoiseSigma = 2;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 5;
+pipelineOptions.triangPointSigma = 5;
+
+noiseParams.sigma_g = 1e-4*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-5;
+noiseParams.sigma_ba = 1e-5;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+Max Outlier error: 10
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 3.76256 / 6.23229 
+--------- 
+ End Euclidian Error (Opt/IMU): 5.74688 / 12.57622
+--------- 
+ Total Distance Travelled: 334.68439 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 2.24293 / 2.99505
+
+
+=========================================================================
+Sept 15, 2014
+Removed gravity directly in loadImu, reduced 'time offset' from 0.01 to 0.00001
+%dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0036_sync';
+1:500
+g_w = [0;0;0];
+
+%Pipeline
+pipelineOptions.featureCount = 200;
+pipelineOptions.initDisparityThreshold = 1;
+pipelineOptions.kfDisparityThreshold = 5;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 0.75^2;
+pipelineOptions.inlierMinDisparity = 1;
+pipelineOptions.inlierMaxForwardDistance = 20;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 3;
+pipelineOptions.obsNoiseSigma = 1;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 0.5;
+pipelineOptions.triangPointSigma = 5;
+pipelineOptions.maxBatchOptimizerError = 5;
+
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-5;
+noiseParams.sigma_ba = 1e-5;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 3.38132 / 4.95668 
+--------- 
+ End Euclidian Error (Opt/IMU): 5.56523 / 9.20009
+--------- 
+ Total Distance Travelled: 441.89068 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 2.06205 / 3.29919
+
+
+(With learning based on 0001, 10 iterations, K=5, median)
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 3.28308 / 4.95668 
+--------- 
+ End Euclidian Error (Opt/IMU): 5.27980 / 9.20009
+--------- 
+ Total Distance Travelled: 441.89068 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 1.97055 / 3.29919
+
+
+(With aggressive RANSAC, threshold = 0.5)
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 3.95399 / 4.97361 
+--------- 
+ End Euclidian Error (Opt/IMU): 7.35185 / 9.20009
+--------- 
+ Total Distance Travelled: 441.89068 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 2.46479 / 3.31292
+
+(With aggressive RANSAC, threshold = 1)
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 4.35934 / 4.98296 
+--------- 
+ End Euclidian Error (Opt/IMU): 8.11923 / 9.20009
+--------- 
+ Total Distance Travelled: 441.89068 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 2.86915 / 3.31897
+
+
+
+
+
+
+
+dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0027_sync';
+frameRange = 1:700;
+
+%Pipeline
+pipelineOptions.featureCount = 200;
+pipelineOptions.initDisparityThreshold = 5;
+pipelineOptions.kfDisparityThreshold = 10;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 0.5^2;
+pipelineOptions.inlierMinDisparity = 10;
+pipelineOptions.inlierMaxForwardDistance = 50;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 3;
+pipelineOptions.obsNoiseSigma = 0.25;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 1;
+pipelineOptions.triangPointSigma = 5;
+pipelineOptions.maxBatchOptimizerError = 1.5;
+
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-5;
+noiseParams.sigma_ba = 1e-5;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 2.87766 / 3.60520 
+--------- 
+ End Euclidian Error (Opt/IMU): 3.69663 / 5.66216
+--------- 
+ Total Distance Travelled: 455.98791 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 1.31281 / 1.87004
+
+
+(With learning based on 0001, 10 iterations, K=5, median)
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 2.63827 / 3.60520 
+--------- 
+ End Euclidian Error (Opt/IMU): 2.52139 / 5.66216
+--------- 
+ Total Distance Travelled: 455.98791 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 1.09239 / 1.87004
+
+(With aggressive RANSAC, threshold = 0.5)
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 2.51591 / 3.60766 
+--------- 
+ End Euclidian Error (Opt/IMU): 1.46430 / 5.66216
+--------- 
+ Total Distance Travelled: 455.98791 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 0.95610 / 1.87519
+
+(With aggressive RANSAC, threshold = 1)
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 2.38546 / 3.60766 
+--------- 
+ End Euclidian Error (Opt/IMU): 1.65793 / 5.66216
+--------- 
+ Total Distance Travelled: 455.98791 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 0.67791 / 1.87519
+
+
+dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0096_sync';
+
+%Pipeline
+pipelineOptions.featureCount = 200;
+pipelineOptions.initDisparityThreshold = 5;
+pipelineOptions.kfDisparityThreshold = 10;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 0.5^2;
+pipelineOptions.inlierMinDisparity = 5;
+pipelineOptions.inlierMaxForwardDistance = 50;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 3;
+pipelineOptions.obsNoiseSigma = 0.25;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 1;
+pipelineOptions.triangPointSigma = 5;
+pipelineOptions.maxBatchOptimizerError = 5;
+
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-5;
+noiseParams.sigma_ba = 1e-5;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 2.97798 / 4.41014 
+--------- 
+ End Euclidian Error (Opt/IMU): 3.16388 / 5.76262
+--------- 
+ Total Distance Travelled: 427.16227 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 2.38946 / 3.38989
+
+(With learning based on 0001, 10 iterations, K=5, median)
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 2.48197 / 4.41014 
+--------- 
+ End Euclidian Error (Opt/IMU): 2.56347 / 5.76262
+--------- 
+ Total Distance Travelled: 427.16227 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 1.53598 / 3.38989
+
+
+(With aggressive RANSAC, threshold = 1)
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 2.67799 / 4.41010 
+--------- 
+ End Euclidian Error (Opt/IMU): 4.35319 / 5.76262
+--------- 
+ Total Distance Travelled: 427.16227 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 2.28691 / 3.39050
+
+
+dataBaseDir = '/home/valentin/Desktop/KITTI/2011_10_03/2011_10_03_drive_0042_sync';
+
+%Pipeline
+pipelineOptions.featureCount = 200;
+pipelineOptions.initDisparityThreshold = 5;
+pipelineOptions.kfDisparityThreshold = 5;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 0.5^2;
+pipelineOptions.inlierMinDisparity = 2;
+pipelineOptions.inlierMaxForwardDistance = 75;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 3;
+pipelineOptions.obsNoiseSigma = 0.25;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 1;
+pipelineOptions.triangPointSigma = 5;
+pipelineOptions.maxBatchOptimizerError = 5;
+
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-5;
+noiseParams.sigma_ba = 1e-5;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 5.56035 / 7.98115 
+--------- 
+ End Euclidian Error (Opt/IMU): 16.25396 / 20.75925
+--------- 
+ Total Distance Travelled: 670.41420 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 6.19212 / 7.86921
+
+(With learning based on 0001, 10 iterations, K=5, median)
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 5.48586 / 7.98115 
+--------- 
+ End Euclidian Error (Opt/IMU): 16.04256 / 20.75925
+--------- 
+ Total Distance Travelled: 670.41420 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 6.13366 / 7.86921
+
+
+(With aggressive RANSAC, threshold = 1)
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 5.98253 / 7.96218 
+--------- 
+ End Euclidian Error (Opt/IMU): 17.48326 / 20.75925
+--------- 
+ Total Distance Travelled: 670.41420 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 6.45016 / 7.78740
+
+3
+dataBaseDir = '/home/valentin/Desktop/KITTI/2011_09_30/2011_09_30_drive_0034_sync';
+
+%Pipeline
+pipelineOptions.featureCount = 500;
+pipelineOptions.initDisparityThreshold = 5;
+pipelineOptions.kfDisparityThreshold = 10;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 0.5^2;
+pipelineOptions.inlierMinDisparity = 5;
+pipelineOptions.inlierMaxForwardDistance = 50;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 3;
+pipelineOptions.obsNoiseSigma = 0.25;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 1;
+pipelineOptions.triangPointSigma = 5;
+pipelineOptions.maxBatchOptimizerError = 1.5;
+
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-5;
+noiseParams.sigma_ba = 1e-5;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 3.57367 / 3.96894 
+--------- 
+ End Euclidian Error (Opt/IMU): 3.72997 / 4.73611
+--------- 
+ Total Distance Travelled: 420.06742 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 1.59809 / 2.11797
+
+
+(With learning based on 0001, 10 iterations, K=5, median)
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 3.44838 / 3.96894 
+--------- 
+ End Euclidian Error (Opt/IMU): 3.58064 / 4.73611
+--------- 
+ Total Distance Travelled: 420.06742 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 1.57877 / 2.11797
+
+(With aggressive RANSAC, threshold = 1)
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 3.61750 / 3.98986 
+--------- 
+ End Euclidian Error (Opt/IMU): 4.11553 / 4.73611
+--------- 
+ Total Distance Travelled: 420.06742 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 1.72802 / 2.11441
+
+
+
+
+
+LEARNING
+dataBaseDir =  '/home/valentin/Desktop/KITTI/2011_09_26/2011_09_26_drive_0001_sync';
+
+
+%Pipeline
+pipelineOptions.featureCount = 100;
+pipelineOptions.initDisparityThreshold = 5;
+pipelineOptions.kfDisparityThreshold = 10;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 0.5^2;
+pipelineOptions.inlierMinDisparity = 2;
+pipelineOptions.inlierMaxForwardDistance = 50;
+pipelineOptions.verbose = true;
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 3;
+pipelineOptions.obsNoiseSigma = 0.25;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 1;
+pipelineOptions.triangPointSigma = 5;
+pipelineOptions.maxBatchOptimizerError = 5;
+
+
+noiseParams.sigma_g = 1e-3*ones(3,1); 
+noiseParams.sigma_a =  1e-2*ones(3,1);
+noiseParams.sigma_bg = 1e-5;
+noiseParams.sigma_ba = 1e-5;
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+noiseParams.tau = 10^12;
+
+--------- 
+ Mean RMSE RPE (Optimized/IMU Only): 0.28240 / 0.41366 
+--------- 
+ End Euclidian Error (Opt/IMU): 0.56329 / 0.88205
+--------- 
+ Total Distance Travelled: 107.88593 m 
+--------- 
+ Mean Euclidian Error (Opt/IMU): 0.27988 / 0.41458

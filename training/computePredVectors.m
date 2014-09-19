@@ -14,7 +14,7 @@ usePredDims = [1; ... %u
                1; ... % entropy
                1; ... % mag(accel)
                1; ... % mag(omega)
-               1; ... % point density
+               0; ... % point density
                1;     % blur metric
                ];
 predSpaceDim = sum(usePredDims); 
@@ -29,8 +29,9 @@ rgb = rgb_orig./max(rgb_orig(:));
 imageSize = size(rgb(:,:,1))';
 
 %Blur metric is the same for entire image
-blurMetricNum = blurMetric(rgb_orig);                
-    
+if usePredDims(12)
+    blurMetricNum = blurMetric(rgb_orig);                
+end    
 
 for i = 1:size(pixelLocations, 2)
     pixelLoc = round(pixelLocations(:,i));

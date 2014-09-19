@@ -114,7 +114,9 @@ end
 % 
 % save('biases.mat', 'omegaBias', 'accelBias');
 
-[omegaBias, accelBias] = loadBiasesFromIMUBag('/home/valentin/Desktop/Crucifix/2014-09-19-15-54-58.bag');
+[omegaBias, accelBias] = loadBiasesFromIMUBag('');
+
+load('biases.mat')
 
 %% VIO pipeline
 %Set parameters

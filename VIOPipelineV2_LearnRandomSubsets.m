@@ -9,7 +9,10 @@ learnedPredSpace.predVectors = [];
 learnedPredSpace.weights = [];
 
 for subset_i = 1:numSubsets
+
     
+try 
+rng('shuffle')
 printf('Learning weights for subset %d.', subset_i);
 usedPredVectors = [];
 totalUsedObservations = 0;
@@ -19,16 +22,19 @@ totalObservations = 0;
 currentPoseGlobal = Pose3(Rot3(rotmat_from_quat(xInit.q)), Point3(xInit.p)); % initial pose is the reference frame (navigation frame)
 currentVelocityGlobal = LieVector(xInit.v); 
 currentBias = imuBias.ConstantBias(noiseParams.init_ba, noiseParams.init_bg);
-sigma_init_x = noiseModel.Isotropic.Sigmas([ 0.01; 0.01; 0.01; 0.01; 0.01; 0.01 ]);
-sigma_init_v = noiseModel.Isotropic.Sigma(3, 0.0000001);
-sigma_init_b = noiseModel.Isotropic.Sigmas([zeros(3,1); zeros(3,1) ]);
 sigma_between_b = [ noiseParams.sigma_ba * ones(3,1); noiseParams.sigma_bg * ones(3,1) ];
 w_coriolis = [0;0;0];
+
+sigma_init_x = noiseModel.Isotropic.Sigmas([ 0.01; 0.01; 0.01; 0.01; 0.01; 0.01 ]);
+sigma_init_v = noiseModel.Isotropic.Sigma(3, 0.1);
+sigma_init_b = noiseModel.Isotropic.Sigmas([noiseParams.sigma_ba * ones(3,1); noiseParams.sigma_bg * ones(3,1) ]);
+
 % Solver object
 isamParams = ISAM2Params;
-%isamParams.setRelinearizeSkip(20);
-isamParams.setFactorization('CHOLESKY');
-isamParams.setEnableDetailedResults(true);
+%isamParams.setFactorization('QR');
+%doglegParams = ISAM2DoglegParams;
+%isamParams.setOptimizationParams(doglegParams);
+%isamParams.setRelinearizeThreshold(0.0001);
 isam = gtsam.ISAM2(isamParams);
 newFactors = NonlinearFactorGraph;
 newValues = Values;
@@ -126,9 +132,6 @@ for measId = measIdsTimeSorted
         imuAccel = imuData.measAccel(:, imuMeasId);
         imuOmega = imuData.measOmega(:, imuMeasId);
         
-        %Keep track of gravity
-        g_w = -1*rotmat_from_quat(imuData.measOrient(:,1))'*[0 0  9.81]';
-        
         %Predict the next state
         [xPrev] = integrateIMU(xPrev, imuAccel, imuOmega, dt, noiseParams, g_w);
         R_wimu = rotmat_from_quat(xPrev.q);
@@ -172,8 +175,13 @@ for measId = measIdsTimeSorted
        firstImageProcessed = true;
         %Extract keyPoints
         keyPoints = detectFASTFeatures(mat2gray(currImage));
-        keyPoints = keyPoints.selectStrongest(pipelineOptions.featureCount);
+        %keyPoints = keyPoints.selectStrongest(pipelineOptions.featureCount);
         keyPointPixels = keyPoints.Location(:,:)';
+        %SELECT RANDOM SUBSET
+        %=========================
+        keyPointPixels = keyPointPixels(:, randperm(size(keyPointPixels,2), pipelineOptions.featureCount));
+        %=========================
+                
         keyPointIds = camMeasId*largeInt + [1:size(keyPointPixels,2)];
         
        %Save data into the referencePose struct
@@ -312,7 +320,7 @@ for measId = measIdsTimeSorted
                
                %Triangulate features
                %All points are expressed in the reference frame
-               triangPoints_r = triangulate(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r); 
+               triangPoints_r = triangulate2(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r); 
                triangPoints_w = homo2cart(referencePose.T_wcam_opt*cart2homo(triangPoints_r));
     
                %Extract the raw pixel measurements
@@ -335,8 +343,12 @@ for measId = measIdsTimeSorted
                
                if pipelineOptions.featureCount - length(inlierIdx) > 0
                 newkeyPoints = detectFASTFeatures(mat2gray(currImage));
-                newkeyPoints = newkeyPoints.selectStrongest(pipelineOptions.featureCount - length(inlierIdx));
+                %newkeyPoints = newkeyPoints.selectStrongest(pipelineOptions.featureCount - length(inlierIdx));
                 newkeyPointPixels = newkeyPoints.Location(:,:)';
+                %SELECT RANDOM SUBSET
+                %=========================
+                newkeyPointPixels = newkeyPointPixels(:, randperm(size(newkeyPointPixels,2), pipelineOptions.featureCount - length(inlierIdx)));
+                %=========================
                 newkeyPointIds = camMeasId*largeInt + [1:size(newkeyPointPixels,2)];
                else
                    newkeyPointPixels = [];
@@ -448,20 +460,9 @@ for measId = measIdsTimeSorted
                     end
                     
                     obsGoneOutofViewIds = setdiff(pastObservations.ids, matchedKeyPointIds);
-                    
-                   %SUBSET SELECTION
-                  %=========================================
-                   if length(obsGoneOutofViewIds) > numSubsets
-                    subsetIdx = round((((subset_i-1)*length(obsGoneOutofViewIds)/numSubsets +1):subset_i*length(obsGoneOutofViewIds)/numSubsets));
-                                  
                     totalObservations = totalObservations + length(obsGoneOutofViewIds);
-                    totalUsedObservations = totalUsedObservations + length(subsetIdx);
-                    
-                    obsGoneOutofViewIds = obsGoneOutofViewIds(subsetIdx);
-                   end
-                  %=========================================
-                    
-                    
+
+                                   
                     %Add all landmarks that have gone out of view
                     for id = 1:length(obsGoneOutofViewIds)
                             kptId = obsGoneOutofViewIds(id);
@@ -470,17 +471,15 @@ for measId = measIdsTimeSorted
                             allPoseKeys = pastObservations.poseKeys(:, pastObservations.ids==kptId);
                             allPredVectors = pastObservations.predVectors(:, pastObservations.ids==kptId);
             
-                            %SUBSET PRED VECTOR SELECTION
-                            %=========================================
-                            usedPredVectors = [usedPredVectors allPredVectors];
-                            %=========================================
+
 
                             %Make sure we have at least 2 observations that
                             %fall into our current cluster
                             %Triangulate the point by taking the mean of
                             %all observations (starting from the 2nd one
                             %since we can't triangulate right away)
-                            
+                            if length(allPoseKeys) >= pipelineOptions.minViewingsForLandmark
+                                
                             kptLocEst = [mean(allKptTriang(1,2:end)); mean(allKptTriang(2,2:end)); mean(allKptTriang(3,2:end)) ];
                             %kptLocEst = allKptTriang(:,1);
                             tempValues = Values;
@@ -502,7 +501,14 @@ for measId = measIdsTimeSorted
                         
                                kptLoc = fullyOptimizedValues.at(kptId).vector;
                               
-                               if length(allPoseKeys) >= pipelineOptions.minViewingsForLandmark
+                             if batchOptimizer.error < pipelineOptions.maxBatchOptimizerError
+                                
+                            %SUBSET PRED VECTOR SELECTION
+                            %=========================================
+                            usedPredVectors = [usedPredVectors allPredVectors];
+                            totalUsedObservations = totalUsedObservations + size(allPredVectors,2);
+                            %=========================================
+                                   
                                 if ~isamCurrentEstimate.exists(kptId)
                                     newValues.insert(kptId, Point3(kptLoc));
                                 end
@@ -510,8 +516,9 @@ for measId = measIdsTimeSorted
                                  for obs_i = 1:size(allKptObsPixels,2)
                                         newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
                                  end
-                                newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
-                               end
+                                %newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
+                             end
+                            end
                     end
                      
                     %Remove all added landmarks from qeueu
@@ -543,9 +550,7 @@ for measId = measIdsTimeSorted
 
                 
 
-         
-%                disp(['Triangulated landmarks: ' num2str(size(triangPoints_w,2))])
-               
+                      
 
                %Save keyframe
             %Each keyframe requires:
@@ -600,6 +605,13 @@ learnedPredSpace.weights = [learnedPredSpace.weights subsetWeight*ones(1, size(u
 
 printf('Total Obs: %d. Total Used Obs: %d. Percent Used: %.1f', totalObservations, totalUsedObservations, totalUsedObservations/totalObservations*100.0);
 printf('Learned subset %d. RPE IMU: %f. RPE GTSAM: %f. Weight: %f. \n=============', subset_i,rpe_int,rpe_gtsam, subsetWeight);
+
+catch
+    printf('Subset failed (Ill posed error). Weights set to close to 0.')
+    subsetWeight = 0.01;
+    learnedPredSpace.predVectors = [learnedPredSpace.predVectors usedPredVectors];
+    learnedPredSpace.weights = [learnedPredSpace.weights subsetWeight*ones(1, size(usedPredVectors,2))];
+end
 
 end %for cluster_i
 

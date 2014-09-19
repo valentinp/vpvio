@@ -6,7 +6,6 @@ function [imuData, frameRange] = loadImuData(imuDataFolder, imageTimestamps)
     %Read IMU data
     oxtsData = loadOxtsliteData(imuDataFolder);
     % load IMU Data
-    v_index = [9:11]; % FLU frame
     a_index = 12:14; % 12:14 body frame, 15:17 FLU frame
     omega_index = 18:20; % 18:20 body frame, 21:23 FLU frame
 
@@ -14,7 +13,7 @@ function [imuData, frameRange] = loadImuData(imuDataFolder, imageTimestamps)
     dateStrings = loadTimestamps([imuDataFolder '/oxts']);
     timestamps = zeros(1, length(dateStrings));
     for i = 1:length(dateStrings)
-        timestamps(i) =  datenum_to_unixtime(datenum(dateStrings(i))) + 0.01;
+        timestamps(i) =  datenum_to_unixtime(datenum(dateStrings(i))) + 0.00001;
     end
     
     frameRange = find(timestamps > imageTimestamps(1) & timestamps < imageTimestamps(end) + 1);
@@ -35,12 +34,9 @@ function [imuData, frameRange] = loadImuData(imuDataFolder, imageTimestamps)
         continue;
       end
       
-      if meas_i == 1
-          imuData.initialVelocity = getRnb(oxtsData{i})'*[ oxtsData{i}(8); oxtsData{i}(7); 0; ];
-      end
+
       
      imuData.timestamps(1,meas_i) = timestamps(i);
-     imuData.measAccel(:,meas_i) =  oxtsData{i}(a_index)';
      imuData.measOmega(:,meas_i) = oxtsData{i}(omega_index);
 
       
@@ -53,7 +49,13 @@ function [imuData, frameRange] = loadImuData(imuDataFolder, imageTimestamps)
       R  = Rz*Ry*Rx;
 
       imuData.measOrient(:,meas_i) = quat_from_rotmat(R);
+      
+      imuData.measAccel(:,meas_i) =  oxtsData{i}(a_index)' - R'*[0;0;9.81];
+
      
+      if meas_i == 1
+          imuData.initialVelocity = getRnb(oxtsData{i})'*[ oxtsData{i}(8); oxtsData{i}(7); 0; ];
+      end
     end
     
     function dn = datenum_to_unixtime( date_num )

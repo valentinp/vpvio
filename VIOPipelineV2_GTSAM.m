@@ -26,19 +26,23 @@ import gtsam.*;
 currentPoseGlobal = Pose3(Rot3(rotmat_from_quat(xInit.q)), Point3(xInit.p)); % initial pose is the reference frame (navigation frame)
 currentVelocityGlobal = LieVector(xInit.v); 
 currentBias = imuBias.ConstantBias(noiseParams.init_ba, noiseParams.init_bg);
-sigma_init_x = noiseModel.Isotropic.Sigmas([ 0.01; 0.01; 0.01; 0.01; 0.01; 0.01 ]);
-sigma_init_v = noiseModel.Isotropic.Sigma(3, 0.0000001);
-sigma_init_b = noiseModel.Isotropic.Sigmas([zeros(3,1); zeros(3,1) ]);
 sigma_between_b = [ noiseParams.sigma_ba * ones(3,1); noiseParams.sigma_bg * ones(3,1) ];
 w_coriolis = [0;0;0];
+
+sigma_init_x = noiseModel.Isotropic.Sigmas([ 0.01; 0.01; 0.01; 0.01; 0.01; 0.01 ]);
+sigma_init_v = noiseModel.Isotropic.Sigma(3, 0.1);
+sigma_init_b = noiseModel.Isotropic.Sigmas([noiseParams.sigma_ba * ones(3,1); noiseParams.sigma_bg * ones(3,1) ]);
+
 % Solver object
 isamParams = ISAM2Params;
-%isamParams.setRelinearizeSkip(20);
-isamParams.setFactorization('CHOLESKY');
-isamParams.setEnableDetailedResults(true);
+%isamParams.setFactorization('QR');
+%doglegParams = ISAM2DoglegParams;
+%isamParams.setOptimizationParams(doglegParams);
+%isamParams.setRelinearizeThreshold(0.0001);
 isam = gtsam.ISAM2(isamParams);
 newFactors = NonlinearFactorGraph;
 newValues = Values;
+totalUsedObservations = 0;
 %==========================%
 
 
@@ -99,6 +103,7 @@ pastObservations.pixels = [];
 pastObservations.poseKeys = [];
 pastObservations.triangPoints = [];
 pastObservations.ids =  [];
+        imuNumProc = 0;    
 
 
 for measId = measIdsTimeSorted
@@ -131,12 +136,13 @@ for measId = measIdsTimeSorted
         imuOmega = imuData.measOmega(:, imuMeasId);
         
         %=======GTSAM=========
-        currentSummarizedMeasurement.integrateMeasurement(imuAccel, imuOmega, dt);
+        currentSummarizedMeasurement.integrateMeasurement(double(imuAccel), double(imuOmega), 0.01);
         %=====================
         
         
         %Keep track of gravity
-        g_w = -1*rotmat_from_quat(imuData.measOrient(:,1))'*[0 0 9.81]';
+        %g_w = -1*rotmat_from_quat(imuData.measOrient(:,imuMeasId))'*[0 0 9.81]';
+        
         
         
         %Predict the next state
@@ -151,7 +157,7 @@ for measId = measIdsTimeSorted
         
         %Keep track of the state
         T_wimu_estimated(:,:, end+1) = inv([R_imuw -R_imuw*p_imuw_w; 0 0 0 1]);
-
+        imuNumProc = imuNumProc +1;
    
     % Camera Measurement 
     % ==========================================================
@@ -159,8 +165,7 @@ for measId = measIdsTimeSorted
         if pipelineOptions.verbose
             disp(['Processing Camera Measurement. ID: ' num2str(camMeasId)]); 
         end
-        
-        
+
 
         %Get measurement data
         %camMeasId
@@ -182,6 +187,9 @@ for measId = measIdsTimeSorted
         keyPoints = detectFASTFeatures(mat2gray(currImage));
         keyPoints = keyPoints.selectStrongest(pipelineOptions.featureCount);
         keyPointPixels = keyPoints.Location(:,:)';
+        %Randomly select top N
+        %kpt_num = size(keyPointPixels,2);
+        %keyPointPixels = keyPointPixels(:, randperm(kpt_num, pipelineOptions.featureCount));
         keyPointIds = camMeasId*largeInt + [1:size(keyPointPixels,2)];
         
        %Save data into the referencePose struct
@@ -207,13 +215,13 @@ for measId = measIdsTimeSorted
             %Add constraints
             %newFactors.add(PriorFactorPose3(currentPoseKey, currentPoseGlobal, sigma_init_x));
             newFactors.add(NonlinearEqualityPose3(currentPoseKey, currentPoseGlobal));
-            newFactors.add(NonlinearEqualityLieVector(currentVelKey, currentVelocityGlobal));
-             newFactors.add(NonlinearEqualityConstantBias(currentBiasKey, currentBias));
+            newFactors.add(PriorFactorLieVector(currentVelKey, currentVelocityGlobal, sigma_init_v));
+            newFactors.add(PriorFactorConstantBias(currentBiasKey, currentBias, sigma_init_b));
             
-            %Prepare for IMU Integration
+            %Prepare for IMU Integrationt
             currentSummarizedMeasurement = gtsam.ImuFactorPreintegratedMeasurements( ...
-                      currentBias, diag(noiseParams.sigma_a.^2), ...
-                      diag(noiseParams.sigma_g.^2), 1e-5 * eye(3));
+                      currentBias, double(diag(noiseParams.sigma_a.^2)), ...
+                      double(diag(noiseParams.sigma_g.^2)), double(1e-12*eye(3)));
                 
             %Note: We cannot add landmark observations just yet because we
             %cannot be sure that all landmarks will be observed from the
@@ -229,18 +237,6 @@ for measId = measIdsTimeSorted
               T_rcam = T_camimu*T_rimu*inv(T_camimu);
               R_rcam = T_rcam(1:3,1:3);
               p_camr_r = homo2cart(T_rcam*[0 0 0 1]');
-              
-
-%              currkeyPoints = detectFASTFeatures(mat2gray(currImage));
-%              currkeyPoints = currkeyPoints.selectStrongest(pipelineOptions.featureCount);
-%              currkeyPointPixels = currkeyPoints.Location(:,:)';
-%              
-%              [refFeatures, oldValidPoints] = extractFeatures(referencePose.currImage, referencePose.allKeyPointPixels');
-%               [currFeatures, newValidPoints] = extractFeatures(currImage, currkeyPointPixels');
-%               indexPairs = matchFeatures(refFeatures, currFeatures);
-%               KLOldkeyPointPixels = double(oldValidPoints(indexPairs(:, 1), :)');
-%                 KLNewkeyPointPixels = double(newValidPoints(indexPairs(:, 2), :)');
-              
               
               
             %Use KL-tracker to find locations of new points
@@ -274,10 +270,11 @@ for measId = measIdsTimeSorted
           disp(['Disparity Measure: ' num2str(disparityMeasure)]);
            
            
-          if (~initiliazationComplete && disparityMeasure > pipelineOptions.initDisparityThreshold)  || (initiliazationComplete && disparityMeasure > pipelineOptions.kfDisparityThreshold) %(~initiliazationComplete && norm(p_camr_r) > 1) || (initiliazationComplete && norm(p_camr_r) > 1) %(disparityMeasure > INIT_DISPARITY_THRESHOLD) 
+          if imuNumProc > 2 && ((~initiliazationComplete && disparityMeasure > pipelineOptions.initDisparityThreshold)  || (initiliazationComplete && disparityMeasure > pipelineOptions.kfDisparityThreshold)) %(~initiliazationComplete && norm(p_camr_r) > 1) || (initiliazationComplete && norm(p_camr_r) > 1) %(disparityMeasure > INIT_DISPARITY_THRESHOLD) 
 
               
                    disp(['Creating new keyframe: ' num2str(keyFrame_i)]);   
+                imuNumProc = 0;    
 
                      %=========== GTSAM ===========
         
@@ -289,26 +286,27 @@ for measId = measIdsTimeSorted
              %Important, we keep track of the optimized state and 'compose'
       %odometry onto it!
       currPose = Pose3(referencePose.T_wimu_opt*T_rimu);
-      %newFactors.add(PriorFactorPose3(currentPoseKey, Pose3(T_wimu_int),noiseModel.Isotropic.Sigma(6,1)));
+      
+      % Add the gravity in the current frame
+      g_w_gtsam = g_w;
 
       
-   
              % Summarize IMU data between the previous GPS measurement and now
                newFactors.add(ImuFactor( ...
        currentPoseKey-1, currentVelKey-1, ...
        currentPoseKey, currentVelKey, ...
-      currentBiasKey, currentSummarizedMeasurement, g_w, w_coriolis));
+      currentBiasKey, currentSummarizedMeasurement, g_w_gtsam, w_coriolis));
 
         %Prepare for IMU Integration
-            currentSummarizedMeasurement = gtsam.ImuFactorPreintegratedMeasurements( ...
-                      currentBias, diag(noiseParams.sigma_a.^2), ...
-                      diag(noiseParams.sigma_g.^2), 1e-5 * eye(3));
+                    currentSummarizedMeasurement = gtsam.ImuFactorPreintegratedMeasurements( ...
+                      currentBias, double(diag(noiseParams.sigma_a.^2)), ...
+                      double(diag(noiseParams.sigma_g.^2)), double(1e-12*eye(3)));
 
-        
        %Keep track of BIAS      
        newFactors.add(BetweenFactorConstantBias(currentBiasKey-1, currentBiasKey, imuBias.ConstantBias(zeros(3,1), zeros(3,1)), noiseModel.Diagonal.Sigmas(sigma_between_b)));
+       
 
-    newValues.insert(currentPoseKey, currPose);
+       newValues.insert(currentPoseKey, currPose);
      newValues.insert(currentVelKey, currentVelocityGlobal);
      newValues.insert(currentBiasKey, currentBias);
     
@@ -317,17 +315,17 @@ for measId = measIdsTimeSorted
                %Feature descriptors 
                %matchedRelFeatures = referencePose.allkeyPointFeatures(matchedRelIndices(:,1), :);
                 
-%               [~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity', 'MaxDistance', 1);
-%               triangPoints_r = triangulate(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r); 
-%               
-%               inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')' & triangPoints_r(3,:) > 0 & triangPoints_r(3,:) < pipelineOptions.inlierMaxForwardDistance);
-%         
+               [~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity', 'MaxDistance', 1);
+               %triangPoints_r = triangulate(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r); 
+               
+              inlierIdx1 = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')');
+                
              
               %[~, ~, inlierIdx1] = frame2frameRANSAC(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam);
               inlierIdx2 = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
-              
-              %inlierIdx = intersect(inlierIdx1, inlierIdx2);
-              inlierIdx = inlierIdx2;
+%               
+              inlierIdx = intersect(inlierIdx1, inlierIdx2);
+              %inlierIdx = inlierIdx2;
 
               %matchedRelFeatures = matchedRelFeatures(inlierIdx, :); 
               matchedReferenceUnitVectors = matchedReferenceUnitVectors(:, inlierIdx);
@@ -350,8 +348,11 @@ for measId = measIdsTimeSorted
                
                if pipelineOptions.featureCount - length(inlierIdx) > 0
                 newkeyPoints = detectFASTFeatures(mat2gray(currImage));
-                newkeyPoints = newkeyPoints.selectStrongest(pipelineOptions.featureCount - length(inlierIdx));
-                newkeyPointPixels = newkeyPoints.Location(:,:)';
+                
+               newkeyPoints = newkeyPoints.selectStrongest(pipelineOptions.featureCount - length(inlierIdx));
+               newkeyPointPixels = newkeyPoints.Location(:,:)';
+               %newkeyPointPixels = newkeyPointPixels(:, randperm(size(newkeyPointPixels,2), pipelineOptions.featureCount - length(inlierIdx)));
+ 
                 newkeyPointIds = camMeasId*largeInt + [1:size(newkeyPointPixels,2)];
                else
                    newkeyPointPixels = [];
@@ -491,10 +492,14 @@ for measId = measIdsTimeSorted
                             
                                batchOptimizer = LevenbergMarquardtOptimizer(tempFactors, tempValues);
                                fullyOptimizedValues = batchOptimizer.optimize();
+                               
                         
                                kptLoc = fullyOptimizedValues.at(kptId).vector;
-                              
-                               if length(allPoseKeys) >= pipelineOptions.minViewingsForLandmark
+                               
+                               
+                               if length(allPoseKeys) >= pipelineOptions.minViewingsForLandmark  && batchOptimizer.error < pipelineOptions.maxBatchOptimizerError
+                               
+                                totalUsedObservations = totalUsedObservations + size(allKptObsPixels,2);
                                 if ~isamCurrentEstimate.exists(kptId)
                                     newValues.insert(kptId, Point3(kptLoc));
                                 end
@@ -502,7 +507,7 @@ for measId = measIdsTimeSorted
                                 for obs_i = 1:size(allKptObsPixels,2)
                                     newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
                                 end
-                                newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
+                                %newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
                              end
                     end
                      
@@ -531,7 +536,7 @@ for measId = measIdsTimeSorted
                 currentBias = isamCurrentEstimate.at(currentBiasKey);
                 currentPoseGlobal = isamCurrentEstimate.at(currentPoseKey);
 
-               
+                
          
                 %Plot the results
                 

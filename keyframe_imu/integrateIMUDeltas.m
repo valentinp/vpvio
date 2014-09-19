@@ -1,4 +1,4 @@
-function [xUpdate] = integrateIMU(xPrev, a, omega, dt, noise_params, g_w)
+function [xUpdate] = integrateIMUDeltas(xPrev, a, omega, dt, noise_params, g_w)
 %INTEGRATEIMUSTREAM Integrate IMU stream and return state and covariance
 %estimates
 

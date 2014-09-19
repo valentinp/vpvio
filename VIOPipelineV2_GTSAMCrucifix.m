@@ -1,4 +1,4 @@
-function [T_wcam_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAMCrucifix(K, T_camimu, monoImageData, imuData, pipelineOptions, noiseParams, xInit, g_w)
+function [T_wcam_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAMCrucifix(K, T_camimu, monoImageData, bagImageData, imuData, pipelineOptions, noiseParams, xInit, g_w)
 %VIOPIPELINE Run the Visual Inertial Odometry Pipeline
 % K: camera intrinsics
 % T_camimu: transformation from the imu to the camera frame
@@ -95,6 +95,12 @@ iter = 1;
 %Keep track of landmarks
 insertedLandmarkIds = [];
 initializedLandmarkIds = [];
+
+initialObservations.pixels = [];
+initialObservations.poseKeys = [];
+initialObservations.triangPoints = [];
+initialObservations.ids =  [];
+
 pastObservations.pixels = [];
 pastObservations.poseKeys = [];
 pastObservations.triangPoints = [];
@@ -128,7 +134,7 @@ for measId = measIdsTimeSorted
         end
         
         %Extract the measurements
-        imuAccel = imuData.measAccel(:, imuMeasId);
+        imuAccel = imuData.measAccel(:, imuMeasId) + rotmat_from_quat(imuData.measOrient(:,imuMeasId))'*[0 0 9.805]';
         imuOmega = imuData.measOmega(:, imuMeasId);
         
         %=======GTSAM=========
@@ -165,8 +171,8 @@ for measId = measIdsTimeSorted
 
         %Get measurement data
         %camMeasId
-        currImage = monoImageData.rectImages(:,:,camMeasId);
-                
+        %currImage = monoImageData.rectImages(:,:,camMeasId);
+         currImage = reshape(bagImageData{camMeasId}.data, 1280, 960)';       
    
         %The last IMU state based on integration (relative to the world)
         T_wimu_int = T_wimu_estimated(:,:, end);
@@ -180,7 +186,7 @@ for measId = measIdsTimeSorted
        
        firstImageProcessed = true;
         %Extract keyPoints
-        keyPoints = detectFASTFeatures(mat2gray(currImage));
+        keyPoints = detectMinEigenFeatures(mat2gray(currImage));
         keyPoints = keyPoints.selectStrongest(pipelineOptions.featureCount);
         keyPointPixels = keyPoints.Location(:,:)';
         keyPointIds = camMeasId*largeInt + [1:size(keyPointPixels,2)];
@@ -195,7 +201,9 @@ for measId = measIdsTimeSorted
            referencePose.T_wcam_opt = T_wimu_int*inv(T_camimu);
            referencePose.allLandmarkIds = keyPointIds;
            referencePose.currImage = currImage;
-
+            
+         %Save the first pose  
+           firstPose = referencePose;
        
                    % =========== GTSAM ============
             % Initialization
@@ -209,7 +217,6 @@ for measId = measIdsTimeSorted
             newValues.insert(currentBiasKey, currentBias);
             
             %Add constraints
-            %newFactors.add(PriorFactorPose3(currentPoseKey, currentPoseGlobal, sigma_init_x));
             newFactors.add(NonlinearEqualityPose3(currentPoseKey, currentPoseGlobal));
             newFactors.add(NonlinearEqualityLieVector(currentVelKey, currentVelocityGlobal));
              newFactors.add(NonlinearEqualityConstantBias(currentBiasKey, currentBias));
@@ -239,13 +246,17 @@ for measId = measIdsTimeSorted
            KLOldKeyPoints = num2cell(double(referencePose.allKeyPointPixels'), 2)';
             keyPointIds = referencePose.allLandmarkIds;
 
-           [KLNewKeyPoints, status, ~] = cv.calcOpticalFlowPyrLK(uint8(referencePose.currImage), uint8(currImage), KLOldKeyPoints);
+           [KLNewKeyPoints, status, ~] = cv.calcOpticalFlowPyrLK(uint8(referencePose.currImage), uint8(currImage), KLOldKeyPoints, 'GetMinEigenvals', true,'MinEigThreshold', 1e-6);
             
             KLOldkeyPointPixels = cell2mat(KLOldKeyPoints(:))';
             KLNewkeyPointPixels = cell2mat(KLNewKeyPoints(:))';
             
             % Remove any points that have negative coordinates
+            if size(KLOldkeyPointPixels,2) > 0
             negCoordIdx = KLNewkeyPointPixels(1,:) < 0 | KLNewkeyPointPixels(2,:) < 0;
+            else
+            negCoordIdx = [];
+            end
             badIdx = negCoordIdx | (status == 0)';
             KLNewkeyPointPixels(:, badIdx) = [];
             KLOldkeyPointPixels(:, badIdx) = [];
@@ -267,11 +278,11 @@ for measId = measIdsTimeSorted
           disparityMeasure = calcDisparity(KLOldkeyPointPixels, KLNewkeyPointPixels);
           disp(['Disparity Measure: ' num2str(disparityMeasure)]);
            
-           
+   
           if (~initiliazationComplete && disparityMeasure > pipelineOptions.initDisparityThreshold)  || (initiliazationComplete && disparityMeasure > pipelineOptions.kfDisparityThreshold) %(~initiliazationComplete && norm(p_camr_r) > 1) || (initiliazationComplete && norm(p_camr_r) > 1) %(disparityMeasure > INIT_DISPARITY_THRESHOLD) 
 
               
-                   disp(['Creating new keyframe: ' num2str(keyFrame_i)]);   
+                   %disp(['Creating new keyframe: ' num2str(keyFrame_i)]);   
 
                      %=========== GTSAM ===========
         
@@ -313,15 +324,16 @@ for measId = measIdsTimeSorted
                 
               
               %[~, ~, inlierIdx1] = frame2frameRANSAC(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam);
-              inlierIdx2 = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
+              %inlierIdx2 = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
               
-              %[~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity', 'MaxDistance', 5);
-              %triangPoints_r = triangulate(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r); 
-              
-             % inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')' & triangPoints_r(3,:) > 0 & triangPoints_r(3,:) < pipelineOptions.inlierMaxForwardDistance);
-              
+              if size(KLNewkeyPointPixels,2) > 3
+                  [~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity', 'MaxDistance', 1);
+                  inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')');
+               else
+                  inlierIdx = [];
+              end
               %inlierIdx = intersect(inlierIdx1, inlierIdx2);
-              inlierIdx = inlierIdx2;
+              %inlierIdx = inlierIdx2;
 
               %matchedRelFeatures = matchedRelFeatures(inlierIdx, :); 
               matchedReferenceUnitVectors = matchedReferenceUnitVectors(:, inlierIdx);
@@ -337,13 +349,13 @@ for measId = measIdsTimeSorted
                matchedRefKeyPointsPixels = KLOldkeyPointPixels(:, inlierIdx);
                matchedKeyPointIds = keyPointIds(inlierIdx);
                
-               printf(['--------- \n Matched ' num2str(length(inlierIdx)) ' old landmarks. ---------\n']);
+               %printf(['--------- \n Matched ' num2str(length(inlierIdx)) ' old landmarks. ---------\n']);
 
                
                %Extract more FAST features to keep an constant number
                
-               if pipelineOptions.featureCount - length(inlierIdx) > 0
-                newkeyPoints = detectFASTFeatures(mat2gray(currImage));
+               if  pipelineOptions.featureCount - length(inlierIdx) > 0
+                newkeyPoints = detectMinEigenFeatures(mat2gray(currImage));
                 newkeyPoints = newkeyPoints.selectStrongest(pipelineOptions.featureCount - length(inlierIdx));
                 newkeyPointPixels = newkeyPoints.Location(:,:)';
                 newkeyPointIds = camMeasId*largeInt + [1:size(newkeyPointPixels,2)];
@@ -353,7 +365,7 @@ for measId = measIdsTimeSorted
                end 
                
                %Show feature tracks if requested
-               if keyFrame_i > 0 && pipelineOptions.showFeatureTracks
+               if pipelineOptions.showFeatureTracks
                     showMatchedFeatures(referencePose.currImage,currImage, matchedRefKeyPointsPixels', matchedKeyPointsPixels');
                     drawnow;
                     pause(0.01);
@@ -384,34 +396,90 @@ for measId = measIdsTimeSorted
                                             
                     
                  
-                
                 %====== INITIALIZATION ========
                if ~initiliazationComplete
                       %Add a factor that constrains this pose (necessary for
                     %the the first 2 poses)
                     %newFactors.add(PriorFactorPose3(currentPoseKey, currPose, sigma_init_x));
-                    if keyFrame_i == 1
-                    newFactors.add(NonlinearEqualityPose3(currentPoseKey, currPose));
-                    end
-                    %Add observations of all matched landmarks
+                    %newFactors.add(NonlinearEqualityPose3(currentPoseKey, currPose));
+                    
+                    disp('Initialization frame.')
+                    
+                    %Keep track of all observed landmarks
                     for kpt_j = 1:length(matchedKeyPointIds)
-                         if ~newValues.exists(matchedKeyPointIds(kpt_j))
-                             insertedLandmarkIds = [insertedLandmarkIds matchedKeyPointIds(kpt_j)];
-                            initializedLandmarkIds = [initializedLandmarkIds matchedKeyPointIds(kpt_j)];
-
-                            newValues.insert(matchedKeyPointIds(kpt_j), Point3(triangPoints_w(:, kpt_j)));
-                            newFactors.add(GenericProjectionFactorCal3_S2(Point2((matchedRefKeyPointsPixels(:,kpt_j))), mono_model_n_robust, currentPoseKey-1, matchedKeyPointIds(kpt_j), K_GTSAM,  Pose3(inv(T_camimu))));
-                           %newFactors.add(PriorFactorPoint3(matchedKeyPointIds(kpt_j), Point3(triangPoints_w(:, kpt_j)), pointNoise));
+                         if keyFrame_i == 1
+                              initialObservations.pixels = [initialObservations.pixels matchedRefKeyPointsPixels(:, kpt_j)];
+                              initialObservations.poseKeys = [initialObservations.poseKeys (currentPoseKey-1)];
+                              initialObservations.ids =  [initialObservations.ids matchedKeyPointIds(kpt_j)];
+                              
+                              initialObservations.pixels = [initialObservations.pixels matchedKeyPointsPixels(:, kpt_j)];
+                              initialObservations.poseKeys = [initialObservations.poseKeys (currentPoseKey)];
+                              initialObservations.ids =  [initialObservations.ids matchedKeyPointIds(kpt_j)];
+                         else
+                              initialObservations.pixels = [initialObservations.pixels matchedKeyPointsPixels(:, kpt_j)];
+                              initialObservations.poseKeys = [initialObservations.poseKeys (currentPoseKey)];
+                              initialObservations.ids =  [initialObservations.ids matchedKeyPointIds(kpt_j)];
                          end
-                         newFactors.add(GenericProjectionFactorCal3_S2(Point2((matchedKeyPointsPixels(:,kpt_j))), mono_model_n_robust, currentPoseKey, matchedKeyPointIds(kpt_j), K_GTSAM, Pose3(inv(T_camimu))));
                     end
-                    if keyFrame_i == 1
+                    
+                    
+
+                    
+                    
+                    if keyFrame_i == 2
+                       uniqueInitialLandmarkIds = unique(initialObservations.ids);
+                        for id = 1:length(uniqueInitialLandmarkIds)
+                            kptId = uniqueInitialLandmarkIds(id);
+                            allKptObsPixels = initialObservations.pixels(:, initialObservations.ids==kptId);
+                            %Ensure that we have observations in all 4 of
+                            %the first frames
+                            if size(allKptObsPixels, 2) > 2
+                                allPoseKeys = initialObservations.poseKeys(:, initialObservations.ids==kptId);
+                                imuPoses = [];
+                                camMatrices = {};
+                                for pose_i = 1:length(allPoseKeys)
+                                    imuPoses(:,:,pose_i) = newValues.at(allPoseKeys(pose_i)).matrix;
+                                    temp = inv(imuPoses(:,:,pose_i)*inv(T_camimu));
+                                    camMatrices{pose_i} = K*temp(1:3,:);
+                                end
+                              
+                                %Triangulate using a fancy 3-view method
+                                 kptLocEst = vgg_X_from_xP_lin(allKptObsPixels,camMatrices, repmat([1280;960], [1, size(allKptObsPixels,2)]));
+                                kptLocEst = homo2cart(kptLocEst);
+                                %kptLocEst = tvt_solve_qr(camMatrices, {allKptObsPixels(:,1),allKptObsPixels(:,2), allKptObsPixels(:,3)});
+                                
+                                reprojectionError = calcReprojectionError(imuPoses, reshape(allKptObsPixels,[2 1 3]), kptLocEst, K, T_camimu);
+                                if reprojectionError < 20 && norm(kptLocEst) < 10
+                                      insertedLandmarkIds = [insertedLandmarkIds kptId];
+                                      initializedLandmarkIds = [initializedLandmarkIds kptId];
+                                        newValues.insert(kptId, Point3(kptLocEst));
+                                        newFactors.add(PriorFactorPoint3(kptId, Point3(kptLocEst), pointNoise));
+                                          for obs_i = 1:size(allKptObsPixels,2)
+                                            newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
+                                         end
+                                 
+                                    end
+                            end
+
+                        end
+                        
                         initiliazationComplete = true;
-                              %Batch optimize
+                              %Batch optimized
                         batchOptimizer = LevenbergMarquardtOptimizer(newFactors, newValues);
-                        fullyOptimizedValues = batchOptimizer.optimize();
+                        batchOptimizer.values
+                        fullyOptimizedValues = batchOptimizer.optimizeSafely();
+                        batchOptimizer.values
+                        batchOptimizer.error
+                       
                         isam.update(newFactors, fullyOptimizedValues);
                         isamCurrentEstimate = isam.calculateEstimate();
+                        
+                        printf('%d landmarks initialized. Inserting into filter.', length(initializedLandmarkIds));
+                        if isempty(initializedLandmarkIds) 
+                            disp('ERROR. NO LANDMARKS INITIALIZED.');
+                            break;
+                        end
+
                         
                         %Reset the new values
                         newFactors = NonlinearFactorGraph;
@@ -446,19 +514,43 @@ for measId = measIdsTimeSorted
                               pastObservations.ids =  [pastObservations.ids matchedKeyPointIds(kpt_j)];
                                      
                          end
-                         if ~ismember(matchedKeyPointIds(kpt_j), initializedLandmarkIds)
                               pastObservations.pixels = [pastObservations.pixels matchedKeyPointsPixels(:, kpt_j)];
                               pastObservations.poseKeys = [pastObservations.poseKeys (currentPoseKey)];
                               pastObservations.triangPoints = [pastObservations.triangPoints triangPoints_w(:,kpt_j)];
                               pastObservations.ids =  [pastObservations.ids matchedKeyPointIds(kpt_j)];
-                         end
                     end
                     
-                    obsGoneOutofViewIds = setdiff(pastObservations.ids, matchedKeyPointIds);
-                         printf('%d landmarks gone out of view. Inserting into filter.', length(obsGoneOutofViewIds));
+                     %Process all landmarks that have gone out of view OR
+                     %if they've been inserted during initialization
+                    obsFromInitialized = intersect(pastObservations.ids, initializedLandmarkIds);
                     
+                         printf('%d observed landmarks from initialization', length(obsFromInitialized));
+
+                   
+                    %Add all observation of the initialized landmarks
+                      for id = 1:length(obsFromInitialized)
+                           kptId = obsFromInitialized(id);
+                           allKptObsPixels = pastObservations.pixels(:, pastObservations.ids==kptId);
+                           allPoseKeys = pastObservations.poseKeys(:, pastObservations.ids==kptId);
+                          for obs_i = 1:size(allKptObsPixels,2)
+                                    newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
+                           end
+                      end
+                       %Remove all added landmarks from qeueu
+                    pastObservations.pixels(:,  ismember(pastObservations.ids, obsFromInitialized)) = [];
+                    pastObservations.poseKeys(ismember(pastObservations.ids, obsFromInitialized)) = [];
+                    pastObservations.triangPoints(:,  ismember(pastObservations.ids, obsFromInitialized)) = [];
+                    pastObservations.ids(ismember(pastObservations.ids, obsFromInitialized)) = [];
+               
+                    
+                    obsGoneOutofViewIds = setdiff(pastObservations.ids, matchedKeyPointIds);
+                    %obsGoneOutofViewIds = [];
+                                                  printf('%d landmarks gone out of view. Inserting into filter.', length(obsGoneOutofViewIds));
+
+                         
                     %Add all landmarks that have gone out of view
                     for id = 1:length(obsGoneOutofViewIds)
+                        
                             kptId = obsGoneOutofViewIds(id);
                             allKptTriang = pastObservations.triangPoints(:, pastObservations.ids==kptId);
                             allKptObsPixels = pastObservations.pixels(:, pastObservations.ids==kptId);
@@ -467,7 +559,18 @@ for measId = measIdsTimeSorted
                             %all observations (starting from the 2nd one
                             %since we can't triangulate right away)
                             
-                            kptLocEst = [mean(allKptTriang(1,2:end)); mean(allKptTriang(2,2:end)); mean(allKptTriang(3,2:end)) ];
+                            if length(allPoseKeys) < pipelineOptions.minViewingsForLandmark
+                                break;
+                            end
+                            camMatrices = {};
+                           for pose_i = 1:length(allPoseKeys)
+                                     P = inv(isamCurrentEstimate.at(allPoseKeys(pose_i)).matrix*inv(T_camimu));
+                                     camMatrices{pose_i} = K*P(1:3,1:4);
+                           end
+                            kptLocEst = vgg_X_from_xP_lin(allKptObsPixels,camMatrices, repmat([1280;960], [1, size(allKptObsPixels,2)]));
+                           kptLocEst = homo2cart(kptLocEst);
+                                      
+                            %kptLocEst = [mean(allKptTriang(1,2:end)); mean(allKptTriang(2,2:end)); mean(allKptTriang(3,2:end)) ];
                             %kptLocEst = allKptTriang(:,2);
                             tempValues = Values;
                             tempFactors = NonlinearFactorGraph;
@@ -488,7 +591,8 @@ for measId = measIdsTimeSorted
                         
                                kptLoc = fullyOptimizedValues.at(kptId).vector;
                               
-                               if length(allPoseKeys) >= pipelineOptions.minViewingsForLandmark
+                               if  batchOptimizer.error < pipelineOptions.maxBatchOptimizerError
+                                   batchOptimizer.error
                                 if ~isamCurrentEstimate.exists(kptId)
                                     newValues.insert(kptId, Point3(kptLoc));
                                 end
@@ -496,7 +600,7 @@ for measId = measIdsTimeSorted
                                 for obs_i = 1:size(allKptObsPixels,2)
                                     newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
                                 end
-                                newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
+                               % newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
                              end
                     end
                      
@@ -521,10 +625,14 @@ for measId = measIdsTimeSorted
 
                
                %What is our current estimate of the state?
+               if initiliazationComplete
                 currentVelocityGlobal = isamCurrentEstimate.at(currentVelKey);
                 currentBias = isamCurrentEstimate.at(currentBiasKey);
                 currentPoseGlobal = isamCurrentEstimate.at(currentPoseKey);
-
+               else
+                   currentPoseGlobal = currPose;
+                   currentVelocityGlobal = LieVector(xPrev.v);
+               end
                
          
                 %Plot the results
@@ -557,7 +665,7 @@ for measId = measIdsTimeSorted
                keyFrames(keyFrame_i).T_wimu_opt = currentPoseGlobal.matrix;
                keyFrames(keyFrame_i).T_wimu_int = T_wimu_int;
                keyFrames(keyFrame_i).T_wcam_opt = currentPoseGlobal.matrix*inv(T_camimu);
-               keyFrames(keyFrame_i).pointCloud = triangPoints_w;
+               %keyFrames(keyFrame_i).pointCloud = triangPoints_w;
                keyFrames(keyFrame_i).landmarkIds = matchedKeyPointIds; %Unique integer associated with a landmark
                keyFrames(keyFrame_i).allKeyPointPixels = [matchedKeyPointsPixels  newkeyPointPixels];
                keyFrames(keyFrame_i).allLandmarkIds = [matchedKeyPointIds newkeyPointIds];
