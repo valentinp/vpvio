@@ -18,8 +18,12 @@ else
 
 end
 %%
-rosBagFileName = '/home/valentin/Desktop/Crucifix/2014-09-16-20-12-15.bag';
+rosBagFileName = '/home/valentin/Desktop/Crucifix/2014-09-20-17-25-01.bag';
 imuTopic = '/microstrain/imu/data';
+
+% rosBagFileName = '/home/valentin/Desktop/Nexus5Data/2014-09-20-16-09-27.bag';
+% imuTopic = '/android/imu';
+
 bag = ros.Bag.load(rosBagFileName);
 bag.info()
 bagImuData = bag.readAll({imuTopic});
@@ -84,7 +88,7 @@ end
 %%
 close all
 dt = 1/500;
-biasSec = 3;
+biasSec = 0.5;
 g_mag = 9.805;
 % First calculate the bias by subtracting the gravity vector (which we know is upwards)
 % Use the first 10 seconds of data
@@ -102,27 +106,34 @@ for imu_i = 1:(biasSec/dt)
        omegaList(:, imu_i) = linearOmega;
 end
 
-omegaBias = mean(omegaList,2)
-accelBias = mean(linearAccelList,2)
+ omegaBias = mean(omegaList,2)
+ accelBias = mean(linearAccelList,2)
+% accelBias(3) = 0
+% omegaBias(2) = 0
+% omegaBias(1) = 0
+
+% imuData.measAccel(3,:) = 0;
+% imuData.measOmega(2,:) = 0;
+% imuData.measOmega(1,:) = 0;
 %%
-figure
-subplot(1,3,1)
-xAccel = imuData.measAccel(1,:)- accelBias(1);
-hist(xAccel, 50)
-title(sprintf('X \n Mean: %.5f \n Median: %.5f \n Min: %.5f \n Max: %.5f \n STD: %.5f', mean(xAccel), median(xAccel), min(xAccel),max(xAccel),std(xAccel)))
-
-subplot(1,3,2)
-yAccel = imuData.measAccel(2,:)- accelBias(2);
-hist(yAccel, 50)
-title(sprintf('Y \n Mean: %.5f \n Median: %.5f \n Min: %.5f \n Max: %.5f \n STD: %.5f', mean(yAccel), median(yAccel), min(yAccel),max(yAccel),std(yAccel)))
-
-subplot(1,3,3)
-zAccel = imuData.measAccel(3,:)- accelBias(3) + g_mag;
-hist(zAccel, 50)
-title(sprintf('Z \n Mean: %.5f \n Median: %.5f \n Min: %.5f \n Max: %.5f \n STD: %.5f', mean(zAccel), median(zAccel), min(zAccel),max(zAccel),std(zAccel)))
+% figure
+% subplot(1,3,1)
+% xAccel = imuData.measAccel(1,:)- accelBias(1);
+% hist(xAccel, 50)
+% title(sprintf('X \n Mean: %.5f \n Median: %.5f \n Min: %.5f \n Max: %.5f \n STD: %.5f', mean(xAccel), median(xAccel), min(xAccel),max(xAccel),std(xAccel)))
+% 
+% subplot(1,3,2)
+% yAccel = imuData.measAccel(2,:)- accelBias(2);
+% hist(yAccel, 50)
+% title(sprintf('Y \n Mean: %.5f \n Median: %.5f \n Min: %.5f \n Max: %.5f \n STD: %.5f', mean(yAccel), median(yAccel), min(yAccel),max(yAccel),std(yAccel)))
+% 
+% subplot(1,3,3)
+% zAccel = imuData.measAccel(3,:)- accelBias(3) + g_mag;
+% hist(zAccel, 50)
+% title(sprintf('Z \n Mean: %.5f \n Median: %.5f \n Min: %.5f \n Max: %.5f \n STD: %.5f', mean(zAccel), median(zAccel), min(zAccel),max(zAccel),std(zAccel)))
 
 %%
-g_w = [0;0;g_mag];
+g_w = [0;0;0];
 noiseParams = [];
 
 xInit.p = zeros(3,1);
@@ -139,7 +150,7 @@ for imu_i = 1:length(imuData.timestamps)
      if imu_i > 1
          dt = imuData.timestamps(imu_i) - imuData.timestamps(imu_i-1);
      end
-     imuAccel = imuData.measAccel(:, imu_i);
+     %imuAccel = imuData.measAccel(:, imu_i);
      imuOmega = imuData.measOmega(:, imu_i);
      
      %Use the magnetometer

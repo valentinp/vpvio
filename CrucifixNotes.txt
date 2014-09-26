@@ -1,0 +1,64 @@
+close all;
+xInit.p = zeros(3,1);
+xInit.v = zeros(3,1);
+xInit.b_g = omegaBias;
+xInit.b_a = accelBias;
+xInit.q = [1; zeros(3,1)];
+
+%Pipeline
+pipelineOptions.featureCount = 200;
+pipelineOptions.initDisparityThreshold = 25;
+pipelineOptions.kfDisparityThreshold = 10;
+pipelineOptions.showFeatureTracks = false;
+pipelineOptions.inlierThreshold = 100^2;
+pipelineOptions.inlierMinDisparity = 1;
+pipelineOptions.inlierMaxForwardDistance = 10;
+pipelineOptions.verbose = false;
+
+g_w = [0 0 0]';
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 6;
+pipelineOptions.obsNoiseSigma = 2;
+pipelineOptions.useRobustMEst = false;
+pipelineOptions.mEstWeight = 5;
+pipelineOptions.maxBatchOptimizerError = 0.5;
+pipelineOptions.triangPointSigma = 1;
+
+
+[omegaBias, accelBias] = loadBiasesFromIMUBag('/home/valentin/Desktop/Crucifix/2014-09-19-14-58-39.bag');
+rosBagFileName = '/home/valentin/Desktop/Crucifix/2014-09-19-14-36-53.bag';
+
+(Good square) ~ 5 cm loop closure error
+
+
+%Pipeline
+pipelineOptions.featureCount = 500;
+pipelineOptions.initDisparityThreshold = 5;
+pipelineOptions.kfDisparityThreshold = 50;
+pipelineOptions.showFeatureTracks = false;
+%pipelineOptions.inlierThreshold = 100^2;
+%pipelineOptions.inlierMinDisparity = 1;
+pipelineOptions.inlierMaxForwardDistance = 10;
+pipelineOptions.verbose = false;
+
+g_w = [0 0 0]';
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 5;
+pipelineOptions.obsNoiseSigma = 1;
+pipelineOptions.useRobustMEst = true;
+pipelineOptions.mEstWeight = 0.5;
+pipelineOptions.maxBatchOptimizerError = 5;
+pipelineOptions.triangPointSigma = 1;
+
+
+noiseParams.sigma_g =  0.01*ones(3,1); 
+noiseParams.sigma_a =  0.05*ones(3,1);
+noiseParams.sigma_bg =  1e-4*ones(3,1);
+noiseParams.sigma_ba = 1e-4*ones(3,1);
+noiseParams.init_ba = accelBias;
+noiseParams.init_bg = omegaBias;
+
+rosBagFileName = '/home/valentin/Desktop/Crucifix/2014-09-20-13-57-40.bag';
+USIGN SURF: Works omgomgomg. Scale still off
+(Large 7x5m square)
+

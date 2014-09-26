@@ -1,11 +1,12 @@
-function [ omegaBias,  accelBias] = loadBiasesFromIMUBag( rosBagFileName )
-%LOADBIASESFROMIMUBAG Summary of this function goes here
-%   Detailed explanation goes here
+function [ omegaBias,  accelBias, g_w] = loadBiasesFromIMUBag( rosBagFileName, g_mag, useFirstNSeconds)
+%LOADBIASESFROMIMUBAG Calculate biases from the first useFirstNSeconds of the given bag file 
 
+%Load the bag file
 imuTopic = '/microstrain/imu/data';
-
 bag = ros.Bag.load(rosBagFileName);
 bagImuData = bag.readAll({imuTopic});
+
+%Read in all data (TODO: Perhaps not all the data?)
 imuData = {};
 imuData.timestamps = [];
 imuData.measAccel = [];
@@ -19,21 +20,32 @@ for t=1:length(bagImuData)
          imuData.measOmega(:,i) = bagImuData{t}.angular_velocity;
 end
 
-g_mag = 9.805;
-% First calculate the bias by subtracting the gravity vector (which we know is upwards)
-% Use the first 10 seconds of data
-linearAccelList = zeros(3,length(imuData.timestamps));
-omegaList = zeros(3,length(imuData.timestamps));
-for imu_i = 1:length(imuData.timestamps)
-       linearAccel = imuData.measAccel(:, imu_i) + rotmat_from_quat(imuData.measOrient(:,imu_i))'*[0 0 g_mag]';
+%How many samples do we need?
+dt = mean(diff(imuData.timestamps));
+
+if useFirstNSeconds == 'ALL'
+    sampleNum = length(imuData.timestamps);
+else
+    sampleNum = round(useFirstNSeconds/dt);
+end
+
+%Extract bias and gravity values
+linearAccelList = zeros(3,sampleNum);
+omegaList = zeros(3,sampleNum);
+gList = zeros(3,sampleNum);
+for imu_i = 1:sampleNum
+       gVec = rotmat_from_quat(imuData.measOrient(:,imu_i))'*[0 0 g_mag]';
+       linearAccel = imuData.measAccel(:, imu_i) + gVec;
        linearOmega = imuData.measOmega(:, imu_i);
        linearAccelList(:, imu_i) = linearAccel;
        omegaList(:, imu_i) = linearOmega;
+       gList(:, imu_i) = gVec;
+
 end
 
 omegaBias = mean(omegaList,2);
 accelBias = mean(linearAccelList,2);
-
+g_w = mean(gList, 2);
 
 end
 

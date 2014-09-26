@@ -29,7 +29,7 @@ dataCalibDir = '/home/valentin/Desktop/KITTI/2011_09_26';
 frameRange = 1:200;
 
 %Images
-rosBagFileName = '/home/valentin/Desktop/Crucifix/2014-09-16-20-49-37.bag';
+rosBagFileName = '/home/valentin/Desktop/Crucifix/2014-09-19-19-14-47.bag';
 imageSize = [1280 960];
 flea3Topic = '/flea3/camera/image_rect';
 bag = ros.Bag.load(rosBagFileName);
@@ -38,7 +38,7 @@ bagImageData = bag.readAll({flea3Topic});
 
 %%
 currImage = reshape(bagImageData{1}.data, imageSize(1), imageSize(2))';
-keyPoints = detectHarrisFeatures(mat2gray(currImage));
+keyPoints = detectMinEigenFeatures(mat2gray(currImage));
 KLNewkeyPointPixels = keyPoints.Location(:,:)';
 
 for img_i = 2:length(bagImageData)
