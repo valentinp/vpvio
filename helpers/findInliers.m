@@ -8,14 +8,14 @@ function [inlierIdx] = findInliers(prevPts, currPts, R_rcam, p_camr_r, pixelMeas
         triangPoints_c = homo2cart(T_camr*cart2homo(triangPoints_r));
        
         simulatedPixels_c = homo2cart(K*triangPoints_c);
-        simulatedPixels_r = homo2cart(K*R_rcam*triangPoints_c);
+        %simulatedPixels_r = homo2cart(K*R_rcam*triangPoints_c);
         
         %Check disparity
-        disparity = simulatedPixels_c(1,:) - simulatedPixels_r(1,:);
+        %disparity = simulatedPixels_c(1,:) - simulatedPixels_r(1,:);
         %Check image space error vectors
         error_vecs = simulatedPixels_c - pixelMeasurements_c;
         error_norms = sum(error_vecs.^2, 1);
        
-        inlierIdx = find(error_norms < pipelineOptions.inlierThreshold & abs(disparity) > pipelineOptions.inlierMinDisparity & triangPoints_r(3,:) > 0 & triangPoints_r(3,:) < pipelineOptions.inlierMaxForwardDistance);
+        inlierIdx = find(error_norms < pipelineOptions.inlierThreshold);
 end
 

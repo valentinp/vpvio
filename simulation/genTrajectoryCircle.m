@@ -45,13 +45,16 @@ imuData.measAccel = zeros(3, numSteps);
 imuData.measOrient = zeros(4, numSteps);
 imuData.measOmega = zeros(3, numSteps);
 imuData.euler = zeros(3, numSteps);
- 
+
+b_a = 0;
+b_w = 0;
+
 for i = 1:numSteps
     
     n_a = simSetup.accelNoiseStd*randn(3,1);
     n_w = simSetup.gyroNoiseStd*randn(3,1);
-    b_a = simSetup.gyroBiasStd*randn(3,1);
-    b_w = simSetup.accelBiasStd*randn(3,1);
+    b_a = b_a + (1/samplingRate)*simSetup.gyroBiasStd*randn(3,1);
+    b_w = b_w + (1/samplingRate)*simSetup.accelBiasStd*randn(3,1);
     
     
     % Time

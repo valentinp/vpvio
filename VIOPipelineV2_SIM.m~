@@ -311,13 +311,13 @@ for measId = measIdsTimeSorted
   
         
                 
-              % inlierIdx = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
-              if size(KLNewkeyPointPixels,2) > 3
-                  [~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity');
-                  inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')');
-               else
-                  inlierIdx = [];
-              end
+               inlierIdx = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
+%               if size(KLNewkeyPointPixels,2) > 3
+%                   [~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity');
+%                   inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')');
+%                else
+%                   inlierIdx = [];
+%               end
 %              
               %inlierIdx = 1: size(KLNewkeyPointPixels,2);
               %inlierIdx = [];
@@ -353,7 +353,7 @@ for measId = measIdsTimeSorted
                 else
                     mono_model_n_robust = noiseModel.Isotropic.Sigma(2, pipelineOptions.obsNoiseSigma);
                 end
-               pointNoise = noiseModel.Isotropic.Sigma(3, 1); 
+                  %pointNoise = noiseModel.Isotropic.Sigma(3, pipelineOptions.triangPointSigma); 
 
                 %approxBaseline = norm(p_camr_r);
                 %Insert estimate for landmark, calculate
@@ -394,7 +394,7 @@ for measId = measIdsTimeSorted
 
                     
                     
-                    if keyFrame_i == 3
+                    if keyFrame_i == 2
                             
                             uniqueInitialLandmarkIds = unique(initialObservations.ids);
                         for id = 1:length(uniqueInitialLandmarkIds)
@@ -417,9 +417,9 @@ for measId = measIdsTimeSorted
                                 kptLocEst = homo2cart(kptLocEst);
                                 %kptLocEst = tvt_solve_qr(camMatrices, {allKptObsPixels(:,1),allKptObsPixels(:,2), allKptObsPixels(:,3)});
                                 
-                                if  norm(kptLocEst) < 50 
+                                if  norm(kptLocEst) < 50
                                     
-                                    reprojectionError = calcReprojectionError(imuPoses, reshape(allKptObsPixels,[2 1 size(allKptObsPixels,2)]), kptLocEst, K, T_camimu)
+                                    %reprojectionError = calcReprojectionError(imuPoses, reshape(allKptObsPixels,[2 1 size(allKptObsPixels,2)]), kptLocEst, K, T_camimu);
                                       %nsertedLandmarkIds = [insertedLandmarkIds kptId];
                                       initializedLandmarkIds = [initializedLandmarkIds kptId];
 
@@ -427,7 +427,6 @@ for measId = measIdsTimeSorted
                                           for obs_i = 1:size(allKptObsPixels,2)
                                             newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
                                           end
-                                     newFactors.add(PriorFactorPoint3(kptId, Point3(kptLocEst), pointNoise));
                                     end
                             end
 
@@ -600,7 +599,7 @@ for measId = measIdsTimeSorted
                                 for obs_i = 1:size(allKptObsPixels,2)
                                     newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
                                 end
-                                newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
+                                %newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
                              end
                     end
                     
@@ -699,14 +698,11 @@ for measId = measIdsTimeSorted
 end % for measId = ...
 
 %Plot the landmark locations
-lmError = zeros(1, length(initializedLandmarkIds));
 for lm_i = 1:length(initializedLandmarkIds)
-    lmGTSAMpos = isamCurrentEstimate.at(initializedLandmarkIds(lm_i)).vector;
+    lmGTSAMpos = isamCurrentEstimate.at(initializedLandmarkIds(lm_i)).vec;
     lmGTpos = landmarks_w(:,initializedLandmarkIds(lm_i));
-    lmError(lm_i) = norm(lmGTpos - lmGTSAMpos);
+    
 end
-figure
-hist(lmError, 50)
 
 %Output the final estimate
 for kf_i = 1:(keyFrame_i-1)

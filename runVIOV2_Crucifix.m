@@ -131,13 +131,11 @@ xInit.b_a = accelBias;
 xInit.q = [1; zeros(3,1)];
 
 %Pipeline
-pipelineOptions.featureCount = 50;
+pipelineOptions.featureCount = 25;
 pipelineOptions.initDisparityThreshold = 5;
-pipelineOptions.kfDisparityThreshold = 5;
-pipelineOptions.showFeatureTracks = false;
-%pipelineOptions.inlierThreshold = 100^2;
-%pipelineOptions.inlierMinDisparity = 1;
-pipelineOptions.inlierMaxForwardDistance = 1;
+pipelineOptions.kfDisparityThreshold = 10;
+pipelineOptions.showFeatureTracks = true;
+pipelineOptions.inlierThreshold = 2^2;
 pipelineOptions.verbose = false;
 
 
@@ -146,18 +144,18 @@ pipelineOptions.minViewingsForLandmark = 3;
 pipelineOptions.obsNoiseSigma = 1;
 pipelineOptions.useRobustMEst = false;
 pipelineOptions.mEstWeight = 5;
-pipelineOptions.maxBatchOptimizerError = 5;
+pipelineOptions.maxBatchOptimizerError = 1;
 pipelineOptions.triangPointSigma = 5;
 
 noiseParams.sigma_g =  0.01*ones(3,1); 
 noiseParams.sigma_a =  0.1*ones(3,1);
-noiseParams.sigma_bg =  1e-5*ones(3,1);
-noiseParams.sigma_ba = 1e-5*ones(3,1);
+noiseParams.sigma_bg =  1e-4*ones(3,1);
+noiseParams.sigma_ba = 1e-4*ones(3,1);
 noiseParams.init_ba = accelBias;
 noiseParams.init_bg = omegaBias;
 
 %The pipeline
-[T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_GTSAMCrucifixThreeView(K, T_camimu, monoImageData,bagImageData, imuData, pipelineOptions, noiseParams, xInit, g_w);
+[T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VINavigationTrifix(K, T_camimu, monoImageData,bagImageData, imuData, pipelineOptions, noiseParams, xInit, g_w);
 
 
 % Plot the estimated values

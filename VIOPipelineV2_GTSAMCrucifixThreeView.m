@@ -282,15 +282,15 @@ for measId = measIdsTimeSorted
             
             
          
-             %Recalculate the unit vectors
-            KLOldkeyPointUnitVectors = normalize(invK*cart2homo(KLRefPixels));
-            KLNewkeyPointUnitVectors = normalize(invK*cart2homo(KLNewkeyPointPixels));
-            
-           
-           %Unit bearing vectors for all matched points
-           matchedReferenceUnitVectors = KLOldkeyPointUnitVectors;
-           matchedCurrentUnitVectors =  KLNewkeyPointUnitVectors;
-           
+%              %Recalculate the unit vectors
+%             KLOldkeyPointUnitVectors = normalize(invK*cart2homo(KLRefPixels));
+%             KLNewkeyPointUnitVectors = normalize(invK*cart2homo(KLNewkeyPointPixels));
+%             
+%            
+%            %Unit bearing vectors for all matched points
+%            matchedReferenceUnitVectors = KLOldkeyPointUnitVectors;
+%            matchedCurrentUnitVectors =  KLNewkeyPointUnitVectors;
+%            
 
            
            %=======DO WE NEED A NEW KEYFRAME?=============
@@ -324,9 +324,6 @@ for measId = measIdsTimeSorted
              %Important, we keep track of the optimized state and 'compose'
       %odometry onto it!
       currPose = Pose3(referencePose.T_wimu_opt*T_rimu);
-      %newFactors.add(PriorFactorPose3(currentPoseKey, Pose3(T_wimu_int),noiseModel.Isotropic.Sigma(6,1)));
-
-      
    
              % Summarize IMU data between the previous GPS measurement and now
                newFactors.add(ImuFactor( ...
@@ -368,13 +365,13 @@ for measId = measIdsTimeSorted
               %inlierIdx = inlierIdx2;
 
               %matchedRelFeatures = matchedRelFeatures(inlierIdx, :); 
-              matchedReferenceUnitVectors = matchedReferenceUnitVectors(:, inlierIdx);
-              matchedCurrentUnitVectors = matchedCurrentUnitVectors(:, inlierIdx);
-               
+%               matchedReferenceUnitVectors = matchedReferenceUnitVectors(:, inlierIdx);
+%               matchedCurrentUnitVectors = matchedCurrentUnitVectors(:, inlierIdx);
+%                
                %Triangulate features
                %All points are expressed in the reference frame
-               triangPoints_r = triangulate(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r); 
-               triangPoints_w = homo2cart(referencePose.T_wcam_opt*cart2homo(triangPoints_r));
+               %triangPoints_r = triangulate(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r); 
+               %triangPoints_w = homo2cart(referencePose.T_wcam_opt*cart2homo(triangPoints_r));
     
                %Extract the raw pixel measurements
                matchedKeyPointsPixels = KLNewkeyPointPixels(:, inlierIdx);

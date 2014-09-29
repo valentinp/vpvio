@@ -8,6 +8,8 @@ addpath('helpers');
 addpath('keyframe_imu');
 addpath('../MATLAB/utils');
 addpath('simulation');
+addpath('depth_filter/');
+addpath('triangulation/');
 if ismac
     addpath('/Users/valentinp/Research/opengv/matlab');
 else
@@ -20,7 +22,7 @@ else
 end
  import gtsam.*;
 %% Random number seed
-%rng(12341312);
+rng('shuffle');
 
 
 
@@ -34,16 +36,16 @@ T_camimu = eye(4);
 close all;
 disp('Generating trajectory...');
 %Simulation parameters
-simSetup.imuRate = 200; % Hz
-simSetup.cameraRate = 5; % Hz
-simSetup.cameraResolution = [640, 480]; %pixels
-simSetup.simTime =  38;    % seconds
+simSetup.imuRate = 500; % Hz
+simSetup.cameraRate = 15; % Hz
+simSetup.cameraResolution = [1280, 960]; %pixels
+simSetup.simTime =  30;    % seconds
 
-simSetup.gyroNoiseStd = 1e-3; 
-simSetup.accelNoiseStd = 1e-3;
-simSetup.gyroBiasStd = 3e-3; 
-simSetup.accelBiasStd = 8e-5;
-simSetup.pixelNoiseStd = 0.25; %pixels
+simSetup.gyroNoiseStd = 1e-2; 
+simSetup.accelNoiseStd = 1e-1;
+simSetup.gyroBiasStd = 1e-3; 
+simSetup.accelBiasStd = 1e-3;
+simSetup.pixelNoiseStd = 0; %pixels
 
 
 
@@ -55,14 +57,14 @@ for i = 1:size(T_wImu_GT, 3)
 end
 
 %Generate the true landmarks
-landmarks_w = genLandmarks([-20,20], [-20,20],[0,10], 2000);
+landmarks_w = genLandmarks([-20,20], [-20,20],[0,10], 500);
 
 %Set the camera intrinsics
 focalLength = 4*1e-3; %10 mm
 pixelWidth = 4.8*1e-6;
 % 
 K  = [focalLength/pixelWidth 0 640;
-    0 focalLength/pixelWidth 512;
+    0 focalLength/pixelWidth 480;
     0 0 1];
 
 
@@ -81,14 +83,25 @@ disp('Done generating measurements.');
 %Set parameters
 close all;
 pipelineOptions.initDisparityThreshold = 1;
-pipelineOptions.kfDisparityThreshold = 100;
-pipelineOptions.showFeatureTracks = true;
-
-
-pipelineOptions.inlierThreshold = 0.5^2;
-pipelineOptions.inlierMinDisparity = 10;
-pipelineOptions.inlierMaxForwardDistance = 100;
+pipelineOptions.kfDisparityThreshold = 1;
+pipelineOptions.inlierThreshold = 10000;
 pipelineOptions.verbose = false;
+
+
+%GTSAM
+pipelineOptions.minViewingsForLandmark = 3;
+pipelineOptions.obsNoiseSigma = 1;
+pipelineOptions.useRobustMEst = false;
+pipelineOptions.mEstWeight = 5;
+pipelineOptions.maxBatchOptimizerError = 5;
+
+noiseParams.sigma_g =  1e-2*ones(3,1); 
+noiseParams.sigma_a =  1e-1*ones(3,1);
+noiseParams.sigma_bg =  1e-3*ones(3,1);
+noiseParams.sigma_ba = 1e-3*ones(3,1);
+noiseParams.init_ba = zeros(3,1);
+noiseParams.init_bg = zeros(3,1);
+
 
 xInit.p = imuData.initialPosition;
 xInit.v = imuData.initialVelocity;
@@ -98,15 +111,10 @@ xInit.q = imuData.measOrient(:,1);
 
 g_w = [0 0 -9.81]';
 
-noiseParams.sigma_g = 1e-3;
-noiseParams.sigma_a = 1e-3;
-noiseParams.sigma_bg = 1e-10;
-noiseParams.sigma_ba = 1e-10;
-noiseParams.tau = 10^12;
         
                   
 %The pipeline
-[T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_SIM(K, T_camimu, imageMeasurements, imuData, pipelineOptions, noiseParams, xInit, g_w, landmarks_w);
+[T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_SIMDepthFilter(K, T_camimu, imageMeasurements, imuData, pipelineOptions, noiseParams, xInit, g_w, T_wImu_GT, landmarks_w);
 
 
 % Plot the estimated values
@@ -124,7 +132,7 @@ for kf_i = 1:length(keyFrames)
     p_IMUw_w_int(:,kf_i) = homo2cart(T_wimu_estimated(:,:,keyFrames(kf_i).imuMeasId)*[0;0;0;1]);
     p_IMUw_w_gtsam(:,kf_i) = homo2cart(T_wimu_gtsam(:,:,kf_i)*[0;0;0;1]);
 end
-
+ 
 plot3(p_IMUw_w_GT(1,:),p_IMUw_w_GT(2,:),p_IMUw_w_GT(3,:), '.-k');
 hold on; grid on;
 plot3(p_IMUw_w_int(1,:), p_IMUw_w_int(2,:), p_IMUw_w_int(3,:),'.-r');

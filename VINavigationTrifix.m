@@ -1,4 +1,4 @@
-function [T_wcam_estimated,T_wimu_estimated,T_wimu_gtsam, keyFrames] = VIOPipelineV2_SIM(K, T_camimu, imageMeasurements, imuData, pipelineOptions, noiseParams, xInit, g_w, T_wImu_GT, landmarks_w)
+function [T_wcam_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VINavigationTrifix(K, T_camimu, monoImageData, bagImageData, imuData, pipelineOptions, noiseParams, xInit, g_w)
 %VIOPIPELINE Run the Visual Inertial Odometry Pipeline
 % K: camera intrinsics
 % T_camimu: transformation from the imu to the camera frame
@@ -9,40 +9,36 @@ function [T_wcam_estimated,T_wimu_estimated,T_wimu_gtsam, keyFrames] = VIOPipeli
 %           imuData.measOrient: 4xN (quaternion q_sw, with scalar in the
 %           1st position. The world frame is defined as the N-E-Down ref.
 %           frame.
-% imageMeasurements:
-%           array of imageMeasurement structs:
-%           imageMeasurements(i).timestamp
-%           imageMeasurements(i).pixelMeasurements (2xN)
-%           imageMeasurements(i).landmarkIds (Nx1)
-
+% monoImageData:
+%           monoImageData.timestamps: 1xM
+%           monoImageData.rectImages: WxHxM
 % params:
 %           params.INIT_DISPARITY_THRESHOLD
 %           params.KF_DISPARITY_THRESHOLD
 %           params.MIN_FEATURE_MATCHES
 
- import gtsam.*;
+% Import opencv
+import cv.*;
+import gtsam.*;
+
 
 %===GTSAM INITIALIATION====%
 currentPoseGlobal = Pose3(Rot3(rotmat_from_quat(xInit.q)), Point3(xInit.p)); % initial pose is the reference frame (navigation frame)
 currentVelocityGlobal = LieVector(xInit.v); 
-currentBias = imuBias.ConstantBias(zeros(3,1), zeros(3,1));
-sigma_init_v = noiseModel.Isotropic.Sigma(3, 0.1);
-sigma_init_b = noiseModel.Isotropic.Sigmas([noiseParams.sigma_ba; noiseParams.sigma_bg]);
-sigma_between_b = [ noiseParams.sigma_ba ; noiseParams.sigma_bg ];
+currentBias = imuBias.ConstantBias(noiseParams.init_ba, noiseParams.init_bg);
+sigma_between_b = [ noiseParams.sigma_ba; noiseParams.sigma_bg ];
 w_coriolis = [0;0;0];
-
-
-
 % Solver object
 isamParams = ISAM2Params;
-isamParams.setRelinearizeSkip(10);
+%isamParams.setRelinearizeSkip(25);
 gnParams = ISAM2GaussNewtonParams;
-%gnParams.setWildfireThreshold(1000);
+%gnParams.setWildfireThreshold(0.001);
 isamParams.setOptimizationParams(gnParams);
 isam = gtsam.ISAM2(isamParams);
 newFactors = NonlinearFactorGraph;
 newValues = Values;
 %==========================%
+
 
 invK = inv(K);
 % Main loop
@@ -63,34 +59,30 @@ initiliazationComplete = false;
 % Sort all measurements by their timestamps, process measurements as if in
 % real-time
 
-%Extract image timestamps
-imageTimestamps = zeros(1, length(imageMeasurements));
-for i = 1:length(imageMeasurements)
-    imageTimestamps(i) = imageMeasurements(i).timestamp;
-end
-
 %All measurements are assigned a unique measurement ID based on their
 %timestamp
-numImageMeasurements = length(imageTimestamps);
+numImageMeasurements = length(monoImageData.timestamps);
 numImuMeasurements = length(imuData.timestamps);
 numMeasurements = numImuMeasurements + numImageMeasurements;
 
-allTimestamps = [imageTimestamps imuData.timestamps];
+allTimestamps = [monoImageData.timestamps imuData.timestamps];
 [~,measIdsTimeSorted] = sort(allTimestamps); %Sort timestamps in ascending order
  
 
 camMeasId = 0;
 imuMeasId = 0;
-
+firstImageProcessed = false;
 
 
 %Initialize the state
 xCorrected = xInit;
 xDeadReckon = xInit;
 
-%Initialize the history
-
-
+%Initialize movement state
+lastMovingPose = currentPoseGlobal;
+lastMovingState = xInit;
+keyFrameJustCreated = false;
+lastPoseNum = 1;
 
 %Initialize the history
 R_wimu = rotmat_from_quat(xCorrected.q);
@@ -114,6 +106,8 @@ pastObservations.pixels = [];
 pastObservations.poseKeys = [];
 pastObservations.ids =  [];
 
+matchedFeatImg = [];
+
 
 for measId = measIdsTimeSorted
     % Which type of measurement is this?
@@ -123,7 +117,6 @@ for measId = measIdsTimeSorted
     else 
         measType = 'Cam';
         camMeasId = measId;
-        %continue;
     end
     
     
@@ -134,17 +127,17 @@ for measId = measIdsTimeSorted
             disp(['Processing IMU Measurement. ID: ' num2str(imuMeasId)]); 
         end
         
-        
         %Calculate dt
-        if imuMeasId ~= numImuMeasurements
-            dt = imuData.timestamps(imuMeasId+1) - imuData.timestamps(imuMeasId);
+        try     
+            dt = imuData.timestamps(imuMeasId) - imuData.timestamps(imuMeasId - 1);
+        catch
+            dt = imuData.timestamps(imuMeasId +1) - imuData.timestamps(imuMeasId);
         end
         
-        
         %Extract the measurements
-        imuAccel = imuData.measAccel(:, imuMeasId);
-        imuOmega = imuData.measOmega(:, imuMeasId);         
-          
+        imuAccel = imuData.measAccel(:, imuMeasId);% + rotmat_from_quat(imuData.measOrient(:,imuMeasId))'*[0 0 9.805]';
+        imuOmega = imuData.measOmega(:, imuMeasId);
+        
 
         %Predict the next state
         [xCorrected] = integrateIMU(xCorrected, imuAccel, imuOmega, dt, noiseParams, g_w);
@@ -164,7 +157,7 @@ for measId = measIdsTimeSorted
         
         %Keep track of the state
         T_wimu_estimated(:,:, end+1) = [R_wimu p_imuw_w; 0 0 0 1];
-        
+
    
     % Camera Measurement 
     % ==========================================================
@@ -173,30 +166,47 @@ for measId = measIdsTimeSorted
             disp(['Processing Camera Measurement. ID: ' num2str(camMeasId)]); 
         end
         
-        
-        
-        
-        %Extract features (fake ones)
-        largeInt = 1329329;
-        keyPointPixels = imageMeasurements(camMeasId).pixelMeasurements;
-        keyPointIds = imageMeasurements(camMeasId).landmarkIds;
+        disp(['Processing Camera Measurement. ID: ' num2str(camMeasId)]); 
 
-        
+        %Get measurement data
+        %camMeasId
+        %currImage = monoImageData.rectImages(:,:,camMeasId);
+         currImage = reshape(bagImageData{camMeasId}.data, 1280, 960)';       
+   
         %The last IMU state based on integration (relative to the world)
         T_wimu_int = [rotmat_from_quat(xCorrected.q) xCorrected.p; 0 0 0 1];
 
+  
+             
+       %If it's the first camera measurements, we're done. Otherwise
+       %continue with pipeline
+       largeInt = 10000;
+        if firstImageProcessed == false
+       
+               firstImageProcessed = true;
+                %Extract keyPoints
+                keyPoints = detectBinnedImageFeatures((currImage), pipelineOptions.featureCount);
+                keyPointPixels = keyPoints.Location(:,:)';
+                keyPointIds = camMeasId*largeInt + [1:size(keyPointPixels,2)];
+                
+                %Set the history
+                previousImage = currImage;
+                KLOldKeyPoints = num2cell(double(keyPointPixels'), 2)';
+                KLRefPixels = double(keyPointPixels);
+     
         
-        %If it's the first image, set the current pose to the initial
-        %keyFramePose
-        if camMeasId == 1
+       %Save data into the referencePose struct
            referencePose.allKeyPointPixels = keyPointPixels;
            referencePose.T_wimu_int = T_wimu_int;
            referencePose.T_wimu_opt = T_wimu_int;
            referencePose.T_wcam_opt = T_wimu_int*inv(T_camimu);
            referencePose.allLandmarkIds = keyPointIds;
-           
-          
-            % =========== GTSAM ============
+           referencePose.currImage = currImage;
+            
+         %Save the first pose  
+           firstPose = referencePose;
+       
+                   % =========== GTSAM ============
             % Initialization
             currentPoseKey = symbol('x',1);
             currentVelKey =  symbol('v',1);
@@ -208,7 +218,6 @@ for measId = measIdsTimeSorted
             newValues.insert(currentBiasKey, currentBias);
             
             %Add constraints
-            %newFactors.add(PriorFactorPose3(currentPoseKey, currentPoseGlobal, sigma_init_x));
             newFactors.add(NonlinearEqualityPose3(currentPoseKey, currentPoseGlobal));
             newFactors.add(NonlinearEqualityLieVector(currentVelKey, currentVelocityGlobal));
              newFactors.add(NonlinearEqualityConstantBias(currentBiasKey, currentBias));
@@ -216,69 +225,100 @@ for measId = measIdsTimeSorted
             %Prepare for IMU Integration
             currentSummarizedMeasurement = gtsam.ImuFactorPreintegratedMeasurements( ...
                       currentBias, diag(noiseParams.sigma_a.^2), ...
-                      diag(noiseParams.sigma_g.^2), 1e-16 * eye(3));
+                      diag(noiseParams.sigma_g.^2), 1e-8 * eye(3));
                 
             %Note: We cannot add landmark observations just yet because we
             %cannot be sure that all landmarks will be observed from the
             %next pose (if they are not, the system is underconstrained and  ill-posed)
            
             % ==============================
-           
+
         else
-            %The reference pose is either the last keyFrame or the initial pose
-            %depending on whether we are initialized or not
-            %Caculate the rotation matrix prior (relative to the last keyFrame or initial pose)]
-            %currentSummarizedMeasurement
-              
               %The odometry change  
-              %T_rimu = inv(referencePose.T_wimu_opt)*T_wimu_int;
-              
               T_rimu = inv(referencePose.T_wimu_opt)*T_wimu_int;
+              %T_rimu = ([rotmat_from_quat(xPrev.q) xPrev.p;  0 0 0 1]);
+
               
+              %Important: look at the composition!
               T_rcam = T_camimu*T_rimu*inv(T_camimu);
               R_rcam = T_rcam(1:3,1:3);
               p_camr_r = homo2cart(T_rcam*[0 0 0 1]');
-
-             
-
-           %Figure out the best feature matches between the current and
-           %keyFramePose frame (i.e. 'relative')
-           matchedRelIndices = simMatchFeatures(referencePose.allLandmarkIds, keyPointIds);
-           
-           KLOldkeyPointPixels = referencePose.allKeyPointPixels(:, matchedRelIndices(:,1));
-           KLNewkeyPointPixels = keyPointPixels(:, matchedRelIndices(:,2));
-           
-           %Recalculate the unit vectors
-            matchedReferenceUnitVectors = normalize(invK*cart2homo(KLOldkeyPointPixels));
-            matchedCurrentUnitVectors = normalize(invK*cart2homo(KLNewkeyPointPixels));
-      
-           %matchedRefGTPoints = referencePose.landmarksGT_r(:, matchedRelIndices(:,1));
-           %matchedCurrGTPoints = imageMeasurements(camMeasId).landmark_c(:, matchedRelIndices(:,2));
-           matchedKeyPointIds = keyPointIds(matchedRelIndices(:,2), :);
-
+              
+            
+              printf('Tracking %d keypoints.', length(keyPointIds));
+              
+            %Use KL-tracker to find locations of new points
+            if keyFrameJustCreated
+                KLOldKeyPoints = num2cell(double(referencePose.allKeyPointPixels'), 2)';
+                KLRefPixels = double(referencePose.allKeyPointPixels);
+                keyPointIds = referencePose.allLandmarkIds;
+                previousImage = referencePose.currImage;
+                keyFrameJustCreated = false;
+            else
+                keyFrameJustCreated = false;
+            end
+            
+            [KLNewKeyPoints, status, ~] = cv.calcOpticalFlowPyrLK(uint8(previousImage), uint8(currImage), KLOldKeyPoints);
+            previousImage = currImage;
+            
+            
+            KLOldkeyPointPixels = cell2mat(KLOldKeyPoints(:))';
+            KLNewkeyPointPixels = cell2mat(KLNewKeyPoints(:))';
+            
+            % Remove any points that have negative coordinates
+            if size(KLOldkeyPointPixels,2) > 0
+            negCoordIdx = KLNewkeyPointPixels(1,:) < 0 | KLNewkeyPointPixels(2,:) < 0;
+            else
+            negCoordIdx = [];
+            end
+            badIdx = negCoordIdx | (status == 0)';
+            KLNewkeyPointPixels(:, badIdx) = [];
+            keyPointIds(badIdx) = [];
+            KLOldKeyPoints =  num2cell(double(KLNewkeyPointPixels'), 2)';
+            
+            KLRefPixels(:, badIdx) = [];
+            
+            
          
-           
+%              %Recalculate the unit vectors
+             KLOldkeyPointUnitVectors = normalize(invK*cart2homo(KLRefPixels));
+             KLNewkeyPointUnitVectors = normalize(invK*cart2homo(KLNewkeyPointPixels));
+%             
+%            
+%            %Unit bearing vectors for all matched points
+            matchedReferenceUnitVectors = KLOldkeyPointUnitVectors;
+            matchedCurrentUnitVectors =  KLNewkeyPointUnitVectors;
+%            
+
            
            %=======DO WE NEED A NEW KEYFRAME?=============
            %Calculate disparity between the current frame the last keyFramePose
-           disparityMeasure = calcDisparity(KLOldkeyPointPixels, KLNewkeyPointPixels, R_rcam, K);
-           disp(['Disparity Measure: ' num2str(disparityMeasure)]);
-           
-           
-          if (~initiliazationComplete && disparityMeasure > pipelineOptions.initDisparityThreshold)  || (initiliazationComplete && disparityMeasure > pipelineOptions.kfDisparityThreshold) %(~initiliazationComplete && norm(p_camr_r) > 1) || (initiliazationComplete && norm(p_camr_r) > 1) %(disparityMeasure > INIT_DISPARITY_THRESHOLD) 
+           %disparityMeasure = calcDisparity(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, K);
+          disparityMeasure = calcDisparity(KLRefPixels, KLNewkeyPointPixels, R_rcam, K);
+          disp(['Disparity Measure: ' num2str(disparityMeasure)]);
+         
+            if norm(imuData.measOmega(:, imuMeasId)) < 0.05
+            dispThresh = pipelineOptions.kfDisparityThreshold;
+            else
+                dispThresh =  5;
+                disp('Reducing disparity threshold due to turning!');
+            end
+            
+             %dispThresh = pipelineOptions.kfDisparityThreshold;
+
+          if (~initiliazationComplete && disparityMeasure > pipelineOptions.initDisparityThreshold)  || (initiliazationComplete && disparityMeasure > dispThresh) %(~initiliazationComplete && norm(p_camr_r) > 1) || (initiliazationComplete && norm(p_camr_r) > 1) %(disparityMeasure > INIT_DISPARITY_THRESHOLD) 
 
               
-
-
-                disp(['Creating new keyframe: ' num2str(keyFrame_i)]);   
+                   %disp(['Creating new keyframe: ' num2str(keyFrame_i)]);   
 
                      %=========== GTSAM ===========
         
         % At each non=IMU measurement we initialize a new node in the graph
-          currentPoseKey = symbol('x',keyFrame_i+1);
-          currentVelKey =  symbol('v',keyFrame_i+1);
-          currentBiasKey = symbol('b',keyFrame_i+1);
-  
+   currentPoseKey = symbol('x',lastPoseNum+1);
+                  currentVelKey =  symbol('v',lastPoseNum+1);
+                  currentBiasKey = symbol('b',lastPoseNum+1);
+                  lastPoseNum = lastPoseNum + 1;
+
              %Important, we keep track of the optimized state and 'compose'
       %odometry onto it!
       currPose = Pose3(referencePose.T_wimu_opt*T_rimu);
@@ -288,56 +328,83 @@ for measId = measIdsTimeSorted
        currentPoseKey-1, currentVelKey-1, ...
        currentPoseKey, currentVelKey, ...
       currentBiasKey, currentSummarizedMeasurement, g_w, w_coriolis));
-  
-  %Prepare for IMU Integration
+
+        %Prepare for IMU Integration
             currentSummarizedMeasurement = gtsam.ImuFactorPreintegratedMeasurements( ...
                       currentBias, diag(noiseParams.sigma_a.^2), ...
-                      diag(noiseParams.sigma_g.^2), 1e-16 * eye(3));
-             
-             
-       newFactors.add(BetweenFactorConstantBias(currentBiasKey-1, currentBiasKey, imuBias.ConstantBias(zeros(3,1), zeros(3,1)), noiseModel.Diagonal.Sigmas(sqrt(40) * sigma_between_b)));
+                      diag(noiseParams.sigma_g.^2), 1e-8 * eye(3));
 
-       if ~initiliazationComplete
-           currentVelocityGlobal = LieVector(xCorrected.v);
-       end
-       
+        
+       %Keep track of BIAS      
+       newFactors.add(BetweenFactorConstantBias(currentBiasKey-1, currentBiasKey, imuBias.ConstantBias(zeros(3,1), zeros(3,1)), noiseModel.Diagonal.Sigmas(sigma_between_b)));
+
     newValues.insert(currentPoseKey, currPose);
      newValues.insert(currentVelKey, currentVelocityGlobal);
      newValues.insert(currentBiasKey, currentBias);
     
         %=============================
-        
-        
-  
-        
+       
+               %Feature descriptors 
+               %matchedRelFeatures = referencePose.allkeyPointFeatures(matchedRelIndices(:,1), :);
                 
-              % inlierIdx = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
-              if size(KLNewkeyPointPixels,2) > 3
-                  [~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity');
-                  inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')');
-               else
-                  inlierIdx = [];
-              end
-%              
-              %inlierIdx = 1: size(KLNewkeyPointPixels,2);
-              %inlierIdx = [];
-              printf('%d inliers out of a total of %d matched keypoints', length(inlierIdx), size(KLOldkeyPointPixels,2));
-
-             matchedKeyPointIds = matchedKeyPointIds(inlierIdx, :); 
-              matchedReferenceUnitVectors = matchedReferenceUnitVectors(:, inlierIdx);
-              matchedCurrentUnitVectors = matchedCurrentUnitVectors(:, inlierIdx);
               
-%                triangPoints_r = triangulate(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r); 
-%                triangPoints_w = homo2cart(referencePose.T_wcam_opt*cart2homo(triangPoints_r));
-%             
-               
-               
-              %Extract the raw pixel measurements
+              %[~, ~, inlierIdx1] = frame2frameRANSAC(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam);
+              inlierIdx = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
+%               
+%               if size(KLNewkeyPointPixels,2) > 3
+%                   [~, ~, newInlierPixels] = estimateGeometricTransform(KLRefPixels', KLNewkeyPointPixels', 'similarity', 'MaxDistance', 1);
+%                   inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')');
+%                else
+%                   inlierIdx = [];
+%               end
+              
+              printf('%d inliers out of a total of %d matched keypoints', length(inlierIdx), size(KLRefPixels,2));
+              %inlierIdx = intersect(inlierIdx1, inlierIdx2);
+              %inlierIdx = inlierIdx2;
+
+              %matchedRelFeatures = matchedRelFeatures(inlierIdx, :); 
+%               matchedReferenceUnitVectors = matchedReferenceUnitVectors(:, inlierIdx);
+%               matchedCurrentUnitVectors = matchedCurrentUnitVectors(:, inlierIdx);
+%                
+               %Triangulate features
+               %All points are expressed in the reference frame
+               %triangPoints_r = triangulate(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r); 
+               %triangPoints_w = homo2cart(referencePose.T_wcam_opt*cart2homo(triangPoints_r));
+    
+               %Extract the raw pixel measurements
                matchedKeyPointsPixels = KLNewkeyPointPixels(:, inlierIdx);
-               matchedRefKeyPointsPixels = KLOldkeyPointPixels(:, inlierIdx);
+               matchedRefKeyPointsPixels = KLRefPixels(:, inlierIdx);
+               matchedKeyPointIds = keyPointIds(inlierIdx);
+               
+               %printf(['--------- \n Matched ' num2str(length(inlierIdx)) ' old landmarks. ---------\n']);
 
-                    printf(['--------- \n Matched ' num2str(length(inlierIdx)) ' old landmarks. ---------\n']);
+               
+               %Extract more FAST features to keep an constant number
+               
 
+               
+               if  pipelineOptions.featureCount - length(inlierIdx) > 0
+                newkeyPoints = detectBinnedImageFeatures((currImage), pipelineOptions.featureCount - length(inlierIdx));
+                newkeyPointPixels = newkeyPoints.Location(:,:)';
+                newkeyPointIds = camMeasId*largeInt + [1:size(newkeyPointPixels,2)];
+               else
+                   newkeyPointPixels = [];
+                   newkeyPointIds = [];
+               end 
+               
+               %Show feature tracks if requested
+               if pipelineOptions.showFeatureTracks
+                    if isempty(matchedFeatImg)
+                        matchedFeatFig = figure();
+                        matchedFeatImg = showMatchedFeatures(referencePose.currImage,currImage, matchedRefKeyPointsPixels', matchedKeyPointsPixels');
+                    else
+                        set(0,'CurrentFigure',matchedFeatFig)
+                        showMatchedFeatures(referencePose.currImage,currImage, matchedRefKeyPointsPixels', matchedKeyPointsPixels');
+                    drawnow;
+     
+                    end
+                end
+               
                              %=========GTSAM==========
                 %Extract intrinsics
                 f_x = K(1,1);
@@ -353,7 +420,7 @@ for measId = measIdsTimeSorted
                 else
                     mono_model_n_robust = noiseModel.Isotropic.Sigma(2, pipelineOptions.obsNoiseSigma);
                 end
-               pointNoise = noiseModel.Isotropic.Sigma(3, 1); 
+                  pointNoise = noiseModel.Isotropic.Sigma(3, pipelineOptions.triangPointSigma); 
 
                 %approxBaseline = norm(p_camr_r);
                 %Insert estimate for landmark, calculate
@@ -368,9 +435,8 @@ for measId = measIdsTimeSorted
                       %Add a factor that constrains this pose (necessary for
                     %the the first 2 poses)
                     %newFactors.add(PriorFactorPose3(currentPoseKey, currPose, sigma_init_x));
-                    newFactors.add(NonlinearEqualityPose3(currentPoseKey, currPose));
-                    %newFactors.add(NonlinearEqualityLieVector(currentVelKey, LieVector(xPrev.v)));
-          
+                    %newFactors.add(NonlinearEqualityPose3(currentPoseKey, currPose));
+                    
                     disp('Initialization frame.')
                     
                     %Keep track of all observed landmarks
@@ -394,7 +460,7 @@ for measId = measIdsTimeSorted
 
                     
                     
-                    if keyFrame_i == 3
+                    if keyFrame_i == 2
                             
                             uniqueInitialLandmarkIds = unique(initialObservations.ids);
                         for id = 1:length(uniqueInitialLandmarkIds)
@@ -417,42 +483,44 @@ for measId = measIdsTimeSorted
                                 kptLocEst = homo2cart(kptLocEst);
                                 %kptLocEst = tvt_solve_qr(camMatrices, {allKptObsPixels(:,1),allKptObsPixels(:,2), allKptObsPixels(:,3)});
                                 
-                                if  norm(kptLocEst) < 50 
+                                if  norm(kptLocEst) < 20
                                     
-                                    reprojectionError = calcReprojectionError(imuPoses, reshape(allKptObsPixels,[2 1 size(allKptObsPixels,2)]), kptLocEst, K, T_camimu)
+                                    %reprojectionError = calcReprojectionError(imuPoses, reshape(allKptObsPixels,[2 1 size(allKptObsPixels,2)]), kptLocEst, K, T_camimu);
                                       %nsertedLandmarkIds = [insertedLandmarkIds kptId];
                                       initializedLandmarkIds = [initializedLandmarkIds kptId];
+                                     % reprojectionError = calcReprojectionError(imuPoses, reshape(allKptObsPixels,[2 1 size(allKptObsPixels,2)]), kptLocEst, K, T_camimu)
 
                                         newValues.insert(kptId, Point3(kptLocEst));
+                                        newFactors.add(PriorFactorPoint3(kptId, Point3(kptLocEst), pointNoise));
                                           for obs_i = 1:size(allKptObsPixels,2)
                                             newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
                                           end
-                                     newFactors.add(PriorFactorPoint3(kptId, Point3(kptLocEst), pointNoise));
                                     end
                             end
 
                         end
                         
                         initiliazationComplete = true;
-                        %Batch optimized
+                              %Batch optimized
                         batchOptimizer = LevenbergMarquardtOptimizer(newFactors, newValues);
                         batchOptimizer.values
                         batchOptimizer.error
-                        fullyOptimizedValues = batchOptimizer.optimize();
+                        fullyOptimizedValues = batchOptimizer.optimizeSafely();
+                        batchOptimizer.error
                         batchOptimizer.values
                         batchOptimizer.error
 
                        
-                        isam.update(newFactors, newValues);
+                        isam.update(newFactors, fullyOptimizedValues);
                         isamCurrentEstimate = isam.calculateEstimate();
-%                         if batchOptimizer.error > 100
-%                             break;
-%                         end
-%                         printf('%d landmarks initialized. Inserting into filter.', length(initializedLandmarkIds));
-%                         if isempty(initializedLandmarkIds) 
-%                             disp('ERROR. NO LANDMARKS INITIALIZED.');
-%                             %break;
-%                         end
+                        if batchOptimizer.error > 100
+                            break;
+                        end
+                        printf('%d landmarks initialized. Inserting into filter.', length(initializedLandmarkIds));
+                        if isempty(initializedLandmarkIds) 
+                            disp('ERROR. NO LANDMARKS INITIALIZED.');
+                            break;
+                        end
 
                         
                         %Reset the new values
@@ -501,7 +569,7 @@ for measId = measIdsTimeSorted
 
                           for obs_i = 1:size(allKptObsPixels,2)
                                      reprojectionError = calcReprojectionError(newValues.at(allPoseKeys(obs_i)).matrix, allKptObsPixels(:, obs_i), isamCurrentEstimate.at(kptId).vector, K, T_camimu);
-                                     if reprojectionError < 100
+                                     if reprojectionError < 25
                                          addObsNum = addObsNum + 1;
                                          totalReproError = totalReproError + reprojectionError;
                                          newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), noiseModel.Isotropic.Sigma(2, 10), allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
@@ -600,7 +668,7 @@ for measId = measIdsTimeSorted
                                 for obs_i = 1:size(allKptObsPixels,2)
                                     newFactors.add(GenericProjectionFactorCal3_S2(Point2(allKptObsPixels(:, obs_i)), mono_model_n_robust, allPoseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
                                 end
-                                newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
+                                %newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc), pointNoise));
                              end
                     end
                     
@@ -615,10 +683,7 @@ for measId = measIdsTimeSorted
                     %Do the hard work ISAM!
                     
                     isam.update(newFactors, newValues);
-                    %isam.getDelta()
-                    %isam.getLinearizationPoint()
                     isamCurrentEstimate = isam.calculateEstimate();
-                   
 
                         
                     
@@ -648,69 +713,86 @@ for measId = measIdsTimeSorted
                 xCorrected.b_a = currentBias.accelerometer;
                 xCorrected.b_g = currentBias.gyroscope;
                 
+                
+               else
+                   currentPoseGlobal = currPose;
+                   currentVelocityGlobal = LieVector(xCorrected.v);
                end
                
-
-                %Plot the results
-                p_wimu_w = currentPoseGlobal.translation.vector;
-                p_wimu_w_int = T_wimu_estimated(1:3,4, end);
-                plot(p_wimu_w(1), p_wimu_w(2), 'g*');
-                plot(p_wimu_w_int(1), p_wimu_w_int(2), 'r*');
-                %set (gcf(), 'outerposition', [25 800, 560, 470])
-                hold on;
-                drawnow;
-                pause(0.01);
+         
                 
-                 
-
-
                %Save keyframe
                %Each keyframe requires:
                % 1. Absolute rotation and translation information (i.e. pose)
                % 2. Triangulated 3D points and associated descriptor vectors
-
-               keyFrames(keyFrame_i).imuMeasId = imuMeasId+1;
+        
+               keyFrames(keyFrame_i).imuMeasId = size(T_wimu_estimated, 3);
                keyFrames(keyFrame_i).T_wimu_opt = currentPoseGlobal.matrix;
+               keyFrames(keyFrame_i).poseKey = currentPoseKey;
                keyFrames(keyFrame_i).T_wimu_int = T_wimu_int;
                keyFrames(keyFrame_i).T_wcam_opt = currentPoseGlobal.matrix*inv(T_camimu);
+               %keyFrames(keyFrame_i).pointCloud = triangPoints_w;
                keyFrames(keyFrame_i).landmarkIds = matchedKeyPointIds; %Unique integer associated with a landmark
-               keyFrames(keyFrame_i).allKeyPointPixels = keyPointPixels;
-               keyFrames(keyFrame_i).allLandmarkIds = keyPointIds;
-
-               
+               keyFrames(keyFrame_i).allKeyPointPixels = [matchedKeyPointsPixels  newkeyPointPixels];
+               keyFrames(keyFrame_i).allLandmarkIds = [matchedKeyPointIds newkeyPointIds];
+               keyFrames(keyFrame_i).currImage = currImage;
 
                %Update the reference pose
                referencePose = {};
                referencePose = keyFrames(keyFrame_i);
+               keyFrameJustCreated = true;
 
+               keyFrame_i = keyFrame_i + 1;
                
-                keyFrame_i = keyFrame_i + 1;
                
-               
+                            printf('Total Landmarks in ISAM2: %d', length(initializedLandmarkIds));
+                            allPose = zeros(3, length(initializedLandmarkIds));
+                            
+                   for i = 1:length(initializedLandmarkIds)
+                    allPose(:,i) = isamCurrentEstimate.at(initializedLandmarkIds(i)).vector;
+                   end
+                    if keyFrame_i == 3
+                        figure();
+                        landmark_axes = gca; 
+                        lmPoints = scatter3(allPose(1,:),allPose(2,:),allPose(3,:), 'b*');
+                        hold on;
+                        figure;
+                        bias_axes = gca; 
+                        title('Bias Values');
+                        hold on;
+                    elseif keyFrame_i > 3
+                        
+                        plot(bias_axes, keyFrame_i, xCorrected.b_a(1), 'r*');
+                        plot(bias_axes, keyFrame_i, xCorrected.b_a(2), 'g*');
+                        plot(bias_axes, keyFrame_i, xCorrected.b_a(3), 'b*');
+                        
+                        
+                        
+                        delete(lmPoints);
+                        lmPoints = scatter3(landmark_axes, allPose(1,:),allPose(2,:),allPose(3,:), 'b*');
+                        p_wimu_w = currentPoseGlobal.translation.vector;
+                        p_wimu_w_int = T_wimu_estimated(1:3,4,end);
+                        plot3(landmark_axes, p_wimu_w(1), p_wimu_w(2),p_wimu_w(3), 'g*');
+                        plot3(landmark_axes, p_wimu_w_int(1), p_wimu_w_int(2),p_wimu_w_int(3), 'r*');
+                        drawnow; 
+                    end
 
+                
+                   
            end %if meanDisparity
            
            
         end % if camMeasId == 1
-
+        
     end % strcmp(measType...)
     
     iter = iter + 1;
 end % for measId = ...
 
-%Plot the landmark locations
-lmError = zeros(1, length(initializedLandmarkIds));
-for lm_i = 1:length(initializedLandmarkIds)
-    lmGTSAMpos = isamCurrentEstimate.at(initializedLandmarkIds(lm_i)).vector;
-    lmGTpos = landmarks_w(:,initializedLandmarkIds(lm_i));
-    lmError(lm_i) = norm(lmGTpos - lmGTSAMpos);
-end
-figure
-hist(lmError, 50)
-
 %Output the final estimate
 for kf_i = 1:(keyFrame_i-1)
     T_wimu_gtsam(:,:, kf_i) = isamCurrentEstimate.at(symbol('x', kf_i+1)).matrix;
 end
+
 end
 

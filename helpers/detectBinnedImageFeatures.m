@@ -19,43 +19,43 @@ function [ keyPoints ] = detectBinnedImageFeatures( img, featureCount)
         
        
        
-%         if featureCount < 4
-%             featureCount = 4;
-%         end
-%         detector = cv.FeatureDetector('FAST');
-% 
-%         mask = zeros(960,1280);
-%         mask(1:480,1:640) = 1;
-%         cvKeyPoints = detector.detect(img, 'Mask', mask);
-%         [~,sortedKeyPointIds] = sort([cvKeyPoints.response]);
-%         cvKeyPoints = cvKeyPoints(sortedKeyPointIds(1:min(round(featureCount/4),length(cvKeyPoints))));
-%         location1 = reshape([cvKeyPoints(:).pt], [2, length(cvKeyPoints)])';
-%         
-%         mask = zeros(960,1280);
-%         mask(1:480,640:1280) = 1;
-%         cvKeyPoints = detector.detect(img, 'Mask', mask);
-%         [~,sortedKeyPointIds] = sort([cvKeyPoints.response]);
-%         cvKeyPoints = cvKeyPoints(sortedKeyPointIds(1:min(round(featureCount/4),length(cvKeyPoints))));
-%         location2 = reshape([cvKeyPoints(:).pt], [2, length(cvKeyPoints)])';
-%         
-%         mask = zeros(960,1280);
-%         mask(480:960,1:640) = 1;
-%         cvKeyPoints = detector.detect(img, 'Mask', mask);
-%         [~,sortedKeyPointIds] = sort([cvKeyPoints.response]);
-%         cvKeyPoints = cvKeyPoints(sortedKeyPointIds(1:min(round(featureCount/4),length(cvKeyPoints))));
-%         location3 = reshape([cvKeyPoints(:).pt], [2, length(cvKeyPoints)])';
-%         
-%         mask = zeros(960,1280);
-%         mask(480:960,640:1280) = 1;
-%         cvKeyPoints = detector.detect(img, 'Mask', mask);
-%         [~,sortedKeyPointIds] = sort([cvKeyPoints.response]);
-%         cvKeyPoints = cvKeyPoints(sortedKeyPointIds(1:min(round(featureCount/4),length(cvKeyPoints))));
-%         location4 = reshape([cvKeyPoints(:).pt], [2, length(cvKeyPoints)])';
-%         
-%       
-%         
-% 
-%         keyPoints.Location = [location1; location2; location3; location4];
+        if featureCount < 4
+            featureCount = 4;
+        end
+        detector = cv.FeatureDetector('FAST');
+
+        mask = zeros(960,1280);
+        mask(1:480,1:640) = 1;
+        cvKeyPoints = detector.detect(img, 'Mask', mask);
+        [~,sortedKeyPointIds] = sort([cvKeyPoints.response]);
+        cvKeyPoints = cvKeyPoints(sortedKeyPointIds(1:min(round(featureCount/4),length(cvKeyPoints))));
+        location1 = reshape([cvKeyPoints(:).pt], [2, length(cvKeyPoints)])';
+        
+        mask = zeros(960,1280);
+        mask(1:480,640:1280) = 1;
+        cvKeyPoints = detector.detect(img, 'Mask', mask);
+        [~,sortedKeyPointIds] = sort([cvKeyPoints.response]);
+        cvKeyPoints = cvKeyPoints(sortedKeyPointIds(1:min(round(featureCount/4),length(cvKeyPoints))));
+        location2 = reshape([cvKeyPoints(:).pt], [2, length(cvKeyPoints)])';
+        
+        mask = zeros(960,1280);
+        mask(480:960,1:640) = 1;
+        cvKeyPoints = detector.detect(img, 'Mask', mask);
+        [~,sortedKeyPointIds] = sort([cvKeyPoints.response]);
+        cvKeyPoints = cvKeyPoints(sortedKeyPointIds(1:min(round(featureCount/4),length(cvKeyPoints))));
+        location3 = reshape([cvKeyPoints(:).pt], [2, length(cvKeyPoints)])';
+        
+        mask = zeros(960,1280);
+        mask(480:960,640:1280) = 1;
+        cvKeyPoints = detector.detect(img, 'Mask', mask);
+        [~,sortedKeyPointIds] = sort([cvKeyPoints.response]);
+        cvKeyPoints = cvKeyPoints(sortedKeyPointIds(1:min(round(featureCount/4),length(cvKeyPoints))));
+        location4 = reshape([cvKeyPoints(:).pt], [2, length(cvKeyPoints)])';
+        
+      
+        
+
+        keyPoints.Location = [location1; location2; location3; location4];
 % % 
 %        plot(location1(:,1), location1(:,2), '*r');
 %        hold on;
@@ -65,18 +65,18 @@ function [ keyPoints ] = detectBinnedImageFeatures( img, featureCount)
 %        
 %        xlim([1,1280])
 %        ylim([1,960])
-        
-         mask = ones(960,1280);
-         mask(1:25,:) = 0;
-         mask(:,1:25) = 0;
-         mask(end-25:end, :) = 0;
-         mask(:, end-25:end) = 0;
-         
-          detector = cv.FeatureDetector('FAST');
-         cvKeyPoints = detector.detect(img, 'Mask', mask);
-         [~,sortedKeyPointIds] = sort([cvKeyPoints.response]);
-         cvKeyPoints = cvKeyPoints(sortedKeyPointIds(1:min(round(featureCount),length(cvKeyPoints))));
-         keyPoints.Location = reshape([cvKeyPoints(:).pt], [2, length(cvKeyPoints)])';
+%         
+%          mask = ones(960,1280);
+%          mask(1:200,:) = 0;
+% %          mask(:,1:25) = 0;
+%          mask(end-200:end, :) = 0;
+% %          mask(:, end-25:end) = 0;
+%          
+%           detector = cv.FeatureDetector('FAST');
+%          cvKeyPoints = detector.detect(img, 'Mask', mask);
+%          [~,sortedKeyPointIds] = sort([cvKeyPoints.response]);
+%          cvKeyPoints = cvKeyPoints(sortedKeyPointIds(1:min(round(featureCount),length(cvKeyPoints))));
+%          keyPoints.Location = reshape([cvKeyPoints(:).pt], [2, length(cvKeyPoints)])';
 
         
 end

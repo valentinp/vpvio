@@ -5,10 +5,9 @@ function n_p = getLandmarkNoise(viewableLandmarks, pixelMeasurements, T_wCam_GT,
 %     else
 %         n_p = 0.2*simSetup.pixelNoiseStd*randn(2,size(viewableLandmarks,2)); %image noise
 %     end
-    np =  zeros(2, size(viewableLandmarks,2));
-    rightHalfIdx = pixelMeasurements(2,:) > simSetup.cameraResolution(1)/2;
-    n_p = 0.05*randn(2,size(viewableLandmarks,2));
-    n_p(:,rightHalfIdx)  = 5*randn(2,sum(rightHalfIdx)); %image noise     
+
+         n_p = simSetup.pixelNoiseStd*randn(2,size(viewableLandmarks,2)); %image noise        
+  
 
 end
 
