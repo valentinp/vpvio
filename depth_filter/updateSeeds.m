@@ -36,6 +36,7 @@ for seed_i = 1:length(oldSeeds)
   newSeeds(seed_i).id = seed.id;
   newSeeds(seed_i).trueDepth = seed.trueDepth;
   newSeeds(seed_i).numObs = seed.numObs + 1;
+  newSeeds(seed_i).lastPoseKey = seed.lastPoseKey + 1;
 
 end
 

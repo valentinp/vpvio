@@ -311,13 +311,13 @@ for measId = measIdsTimeSorted
   
         
                 
-              % inlierIdx = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
-              if size(KLNewkeyPointPixels,2) > 3
-                  [~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity');
-                  inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')');
-               else
-                  inlierIdx = [];
-              end
+               inlierIdx = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
+%               if size(KLNewkeyPointPixels,2) > 3
+%                   [~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity');
+%                   inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')');
+%                else
+%                   inlierIdx = [];
+%               end
 %              
               %inlierIdx = 1: size(KLNewkeyPointPixels,2);
               %inlierIdx = [];

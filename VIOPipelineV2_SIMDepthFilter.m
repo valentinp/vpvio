@@ -35,7 +35,7 @@ w_coriolis = [0;0;0];
 
 % Solver object
 isamParams = ISAM2Params;
-isamParams.setRelinearizeSkip(10);
+isamParams.setRelinearizeSkip(1);
 gnParams = ISAM2GaussNewtonParams;
 %gnParams.setWildfireThreshold(1000);
 isamParams.setOptimizationParams(gnParams);
@@ -304,15 +304,15 @@ for measId = measIdsTimeSorted
   
         
                 
-              % inlierIdx = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
+              inlierIdx = findInliers(matchedReferenceUnitVectors, matchedCurrentUnitVectors, R_rcam, p_camr_r, KLNewkeyPointPixels, K, pipelineOptions);
 %               if size(KLNewkeyPointPixels,2) > 3
-%                   [~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity');
+%                   [~, ~, newInlierPixels] = estimateGeometricTransform(KLOldkeyPointPixels', KLNewkeyPointPixels', 'similarity', 'MaxDistance', 1);
 %                   inlierIdx = find(ismember(KLNewkeyPointPixels',newInlierPixels, 'Rows')');
 %                else
 %                   inlierIdx = [];
 %               end
 %              
-              inlierIdx = 1: size(KLNewkeyPointPixels,2);
+              %inlierIdx = 1: size(KLNewkeyPointPixels,2);
               %inlierIdx = [];
               printf('%d inliers out of a total of %d matched keypoints', length(inlierIdx), size(KLOldkeyPointPixels,2));
 
@@ -378,13 +378,12 @@ for measId = measIdsTimeSorted
                      matchedReferenceUnitVectors = matchedReferenceUnitVectors(:, unintializedIdx);
                      matchedCurrentUnitVectors = matchedCurrentUnitVectors(:, unintializedIdx);
                      matchedKeyPointsPixels = matchedKeyPointsPixels(:, unintializedIdx);
+                     matchedRefKeyPointsPixels = matchedRefKeyPointsPixels(:, unintializedIdx);
           
                
 
                     %Compute the mean feature depths
                     featureDepths = computeDepths(inv(T_rcam), matchedReferenceUnitVectors, matchedCurrentUnitVectors);
-                    
-                   
                     meanDepth = mean(featureDepths);
                     
                     
@@ -402,52 +401,92 @@ for measId = measIdsTimeSorted
                         
                         oli = length(observedLandmarks) + 1;
                         observedLandmarks(oli).id = newObsIds(kpt_j);
-                        observedLandmarks(oli).poseKey = (currentPoseKey-1);
+                        observedLandmarks(oli).poseKeys = [(currentPoseKey-1) currentPoseKey];
+                        %observedLandmarks(oli).pixelObs = [matchedRefKeyPointsPixels(:,matchedKeyPointIds==newObsIds(kpt_j)), matchedKeyPointsPixels(:,matchedKeyPointIds==newObsIds(kpt_j))];
                         observedLandmarks(oli).featVec = matchedReferenceUnitVectors(:,matchedKeyPointIds==newObsIds(kpt_j));
+                        observedLandmarks(oli).simpleTriang = triangulate2(matchedReferenceUnitVectors(:,matchedKeyPointIds==newObsIds(kpt_j)), matchedCurrentUnitVectors(:,matchedKeyPointIds==newObsIds(kpt_j)), T_rcam(1:3,1:3), T_rcam(1:3,4));
 
                         dfi = length(depthFilterSeeds) + 1;
+                        
                         depthFilterSeeds(dfi).mu = 1/meanDepth;
-                        depthFilterSeeds(dfi).sigma2 = 1/0.5^2*1/36;
+                        depthFilterSeeds(dfi).sigma2 = 4/36;
                         depthFilterSeeds(dfi).a = 10;
                         depthFilterSeeds(dfi).b = 10;
                         depthFilterSeeds(dfi).z_range = 2;
                         depthFilterSeeds(dfi).id = newObsIds(kpt_j);
                         depthFilterSeeds(dfi).trueDepth = norm(landmarks_c(:,newObsIds(kpt_j)));
+                        depthFilterSeeds(dfi).numObs = 1;
+                        depthFilterSeeds(dfi).lastPoseKey = (currentPoseKey-1);
                     end
 
-%                     featureDepths(:,matchedKeyPointIds==392)
-%                     if sum([depthFilterSeeds(:).id]==392) > 0
-%                     estD = 1/depthFilterSeeds([depthFilterSeeds(:).id]==392).mu
-%                     
-%                     end
-                    
-                    %Compute depth uncertainties
-                    taus = computeTaus(inv(T_rcam), matchedCurrentUnitVectors, featureDepths, K);
-                    invTaus = 1./taus;
 
-                    %Update seeds with observations from the current
-                    %image
+                      %Update all uninitialized keypoints
+                      %uninitializedIds = setdiff(matchedKeyPointIds, initializedLandmarkIds);
+    
+                        for obs_i = 1:length(matchedKeyPointIds)
+                            %Compute depth uncertainties
+                            kptId = matchedKeyPointIds(obs_i);
+                            currentSeedMask = [depthFilterSeeds(:).id] == kptId;
+                            if sum(currentSeedMask) == 0
+                                continue;
+                            end
+                                
+                            ol = observedLandmarks([observedLandmarks(:).id] == kptId);
+                            firstSeenPoseKey = ol.poseKeys(1);
+                            firstSeenFeatVec = ol.featVec;
+    
+                            %Keep track of observations
+                            %observedLandmarks([observedLandmarks(:).id] == kptId).poseKeys = [ol.poseKeys currentPoseKey];
+                            %observedLandmarks([observedLandmarks(:).id] == kptId).pixelObs = [ol.pixelObs matchedKeyPointsPixels(:,obs_i)];
+
+                            %Check if we havent updated the state yet
+                            %(happens on 2nd image)
+                            if keyFrame_i == 1
+                                T_camr_feat = T_camw*newValues.at(firstSeenPoseKey).matrix*inv(T_camimu);
+                            else
+                                T_camr_feat = T_camw*isamCurrentEstimate.at(firstSeenPoseKey).matrix*inv(T_camimu);
+                            end
+                            
+                            measFeatureDepth = computeDepths(T_camr_feat, firstSeenFeatVec, matchedCurrentUnitVectors(:, obs_i));
+
+
+                            tau = computeTaus(T_camr_feat, matchedCurrentUnitVectors(:, obs_i),measFeatureDepth, K);
+                            %tau = 1;
+                            invTau = 0.5 * (1.0/max(0.0000001, measFeatureDepth-tau) - 1.0/(measFeatureDepth+tau));
+
+                            %Update seeds with observations from the current
+                            %image
+
+
+                            depthFilterSeeds(currentSeedMask) = updateSeeds(depthFilterSeeds(currentSeedMask), 1/measFeatureDepth, invTau^2);
+                        end
                     
-                    
-                    updatedIdsMask = ismember([depthFilterSeeds(:).id], matchedKeyPointIds);
-                    newSeeds = updateSeeds(depthFilterSeeds(updatedIdsMask), 1./featureDepths, invTaus.^2);
-                    depthFilterSeeds(updatedIdsMask) = newSeeds;
-                    
-                    
-                    
-                    %Output diagnostics
-                    printf('Mean inverse depth sigma2: %.5f', mean([depthFilterSeeds(:).sigma2]));
+                    %Delete all observations that don't have a current
+                    %observation
+                    %expiredSeedIdx = [depthFilterSeeds(:).lastPoseKey] < currentPoseKey - 5;
+                    %depthFilterSeeds(expiredSeedIdx) = [];
+
+
+
                     
                     %Check for convergence
-                    convergedSeedIdx = [depthFilterSeeds(:).sigma2] < 1/100^2;
+                    convergedSeedIdx = [depthFilterSeeds(:).sigma2] < (1/500)^2;
                     convergedInvDepth = [depthFilterSeeds(convergedSeedIdx).mu];
                     convergedKptIds = [depthFilterSeeds(convergedSeedIdx).id];
                     convergedTrueDepths = [depthFilterSeeds(convergedSeedIdx).trueDepth];
+                        convergedNumObs = [depthFilterSeeds(convergedSeedIdx).numObs];
 
-                    
+
+
+                    if ~isempty(convergedNumObs)
+                    printf('Mean number of observations before convergence: %.5f', mean(convergedNumObs));
+                    end
                     
                     %Insert all converged depth estimates as landmarks into
                     %the ISAM filter
+                    meanEucError = 0;
+                    meanEucErrorTri = 0;
+                    meanDepthError = 0;
                     for kpt_i = 1:length(convergedKptIds)
                         
                         
@@ -459,22 +498,29 @@ for measId = measIdsTimeSorted
                             
 
                             
-                            T_wcam = isamCurrentEstimate.at(ol.poseKey).matrix*inv(T_camimu);
+                            T_wcam = isamCurrentEstimate.at(ol.poseKeys(1)).matrix*inv(T_camimu);
                             kptLoc_w = homo2cart(T_wcam*cart2homo((1/invD)*ol.featVec));
-                            
-                            kptId
-                            estD = 1/invD
-                            convergedTrueDepths(kpt_i)
-                            kptLoc_w
-                            homo2cart(T_wcam*cart2homo(convergedTrueDepths(kpt_i)*ol.featVec))
-                            landmarks_w(:, kptId)
+                            kptLoc_w_tri = homo2cart(T_wcam*cart2homo(ol.simpleTriang));
+                            meanEucError = meanEucError + norm(kptLoc_w - landmarks_w(:,kptId));
+                            meanEucErrorTri = meanEucErrorTri + norm(kptLoc_w_tri - landmarks_w(:,kptId));
+                            meanDepthError = meanDepthError + abs(1/invD - convergedTrueDepths(kpt_i));
+
                             
                             %Insert keypoint into the filter
                             newValues.insert(kptId, Point3(kptLoc_w));
-                            newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc_w), noiseModel.Isotropic.Sigma(3, 0.1)));
+%                             for obs_i = 1:size(ol.pixelObs,2)
+%                                 newFactors.add(GenericProjectionFactorCal3_S2(Point2(ol.pixelObs(:, obs_i)), mono_model_n_robust, ol.poseKeys(obs_i), kptId, K_GTSAM,  Pose3(inv(T_camimu))));
+%                             end
+                            
+                            %newFactors = addLandmarkObservations(newFactors, kptId, observedLandmarks);
+                            newFactors.add(PriorFactorPoint3(kptId, Point3(kptLoc_w), noiseModel.Isotropic.Sigma(3, 0.25)));
                             initializedLandmarkIds = [initializedLandmarkIds kptId];
                     end
                     
+                    printf('Mean Euc. Error for %d landmarks inserted: %.5f', length(convergedKptIds), meanEucError/length(convergedKptIds));
+                    printf('Mean Simple Triang Error: %.5f', meanEucErrorTri/length(convergedKptIds));
+                    printf('Mean Depth Error: %.5f', meanDepthError/length(convergedKptIds));
+
                      %Delete all converged seeds
                     depthFilterSeeds(convergedSeedIdx) = [];
                    

@@ -39,13 +39,13 @@ disp('Generating trajectory...');
 simSetup.imuRate = 500; % Hz
 simSetup.cameraRate = 15; % Hz
 simSetup.cameraResolution = [1280, 960]; %pixels
-simSetup.simTime =  25;    % seconds
+simSetup.simTime =  15;    % seconds
 
-simSetup.gyroNoiseStd = 5e-2; 
-simSetup.accelNoiseStd = 5e-1;
-simSetup.gyroBiasStd = 1e-2; 
-simSetup.accelBiasStd = 1e-2;
-simSetup.pixelNoiseStd = 1; %pixels
+simSetup.gyroNoiseStd = 1e-2; 
+simSetup.accelNoiseStd = 1e-1;
+simSetup.gyroBiasStd = 1e-5; 
+simSetup.accelBiasStd = 1e-5;
+simSetup.pixelNoiseStd = 0.5; %pixels
 
 
 
@@ -84,21 +84,21 @@ disp('Done generating measurements.');
 close all;
 pipelineOptions.initDisparityThreshold = 15;
 pipelineOptions.kfDisparityThreshold = 15;
-pipelineOptions.inlierThreshold = 1;
+pipelineOptions.inlierThreshold = 10000;
 pipelineOptions.verbose = false;
 
 
 %GTSAM
 pipelineOptions.minViewingsForLandmark = 3;
-pipelineOptions.obsNoiseSigma = 1;
+pipelineOptions.obsNoiseSigma = 0.5;
 pipelineOptions.useRobustMEst = false;
 pipelineOptions.mEstWeight = 1;
 pipelineOptions.maxBatchOptimizerError = 5;
 
 noiseParams.sigma_g =  1e-2*ones(3,1); 
 noiseParams.sigma_a =  1e-1*ones(3,1);
-noiseParams.sigma_bg =  1e-3*ones(3,1);
-noiseParams.sigma_ba = 1e-3*ones(3,1);
+noiseParams.sigma_bg =  1e-5*ones(3,1);
+noiseParams.sigma_ba = 1e-5*ones(3,1);
 noiseParams.init_ba = zeros(3,1);
 noiseParams.init_bg = zeros(3,1);
 
@@ -114,7 +114,7 @@ g_w = [0 0 -9.81]';
         
                   
 %The pipeline
-[T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_SIMDepthFilter(K, T_camimu, imageMeasurements, imuData, pipelineOptions, noiseParams, xInit, g_w, T_wImu_GT, landmarks_w);
+[T_wc_estimated,T_wimu_estimated, T_wimu_gtsam, keyFrames] = VIOPipelineV2_SIM(K, T_camimu, imageMeasurements, imuData, pipelineOptions, noiseParams, xInit, g_w, T_wImu_GT, landmarks_w);
 
 
 % Plot the estimated values
